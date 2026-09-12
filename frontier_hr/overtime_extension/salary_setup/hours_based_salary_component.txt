@@ -1,0 +1,292 @@
+=========================================================================
+Hours-Based Base Pay — Salary Component Setup Guide
+=========================================================================
+
+Read this together with ot_salary_component_formula.txt. That guide wires
+OVERTIME into payroll. This one wires BASE PAY, for shifts whose
+Shift Type has  Payroll Basis = "Working Hours".
+
+Nothing in frontier_hr creates these components. Type, tax treatment
+and GL behaviour are business decisions, so they are made here by hand.
+
+
+-------------------------------------------------------------------------
+1. WHAT THE APP ALREADY GIVES YOU
+-------------------------------------------------------------------------
+
+On every Salary Slip, populated on before_validate (so the values are
+available to every formula):
+
+  custom_regular_working_hours
+      SUM of Attendance.custom_base_hours over the slip period.
+      This is PAYABLE BASE HOURS - overtime already removed, cap losses
+      already excluded. This is the number base pay should use.
+
+  custom_total_working_hours
+      SUM of Attendance.working_hours. Informational only. Do NOT pay on
+      this: it still contains the overtime hours.
+
+  custom_holiday_hours
+      Holiday List days in the period x custom_standard_day_hours, less any
+      Sunday the deduction policy withdrew. Paid holiday hours.
+
+  custom_standard_day_hours
+      The shift's EFFECTIVE day: shift duration MINUS the unpaid lunch
+      break. 7.5 for an 09:00-17:30 shift with a 60-minute lunch.
+
+  custom_standard_month_hours
+      CALENDAR days in the period x custom_standard_day_hours.
+
+  custom_actual_ot_hours / custom_payable_ot_hours / custom_standard_multiplier
+      Overtime figures - see ot_salary_component_formula.txt.
+
+Guarantee that makes the condition in section 3 work:
+a Shift Type on Payroll Basis "Present / Absent" always writes
+custom_base_hours = 0, so custom_regular_working_hours is 0 for those
+employees. Hours only ever appear for Working Hours shifts.
+
+
+-------------------------------------------------------------------------
+2. THE TRAP - READ BEFORE BUILDING ANYTHING
+-------------------------------------------------------------------------
+
+A normal Basic component is "Depends on Payment Days", i.e. it already
+pays the employee for the days they were present.
+
+Add an hours-based component ON TOP of that and the employee is paid
+TWICE for the same time - once as payment days, once as hours.
+
+The two must be mutually exclusive. Section 3 does that with a Condition
+on each component, so one structure can serve both kinds of shift.
+
+
+-------------------------------------------------------------------------
+3. TWO COMPONENTS, SWITCHED BY PAYROLL BASIS
+-------------------------------------------------------------------------
+
+Component A - your EXISTING Basic, unchanged from stock
+
+    Condition               : custom_payroll_basis != "Working Hours"
+    Depends on Payment Days : YES   (native proration, as it always was)
+    Amount based on formula : YES
+    Formula                 : base
+
+Component B - NEW, hours-based base pay
+
+    Name                    : Basic (Hourly)
+    Type                    : Earning
+    Condition               : custom_payroll_basis == "Working Hours"
+    Depends on Payment Days : NO
+    Statistical Component   : NO
+    Amount based on formula : YES
+    Formula:
+
+        (custom_regular_working_hours + custom_holiday_hours)
+            * (base / custom_standard_month_hours)
+
+    (Section 4 explains why holiday hours belong inside the same line.)
+
+Exactly one of the two ever appears on a slip. Nothing switches on hours,
+so an hours-paid employee who worked nothing correctly earns zero instead
+of falling through to the payment-days branch.
+
+
+-------------------------------------------------------------------------
+3a. WHY THE SWITCH MUST BE BASIS, NOT HOURS
+-------------------------------------------------------------------------
+
+The obvious switch is `custom_regular_working_hours > 0`. It does not work,
+for two independent reasons, both verified on recode.com.
+
+TRAP 1 - the Salary Structure Assignment pre-filters rows, with no period.
+
+  The slip does not read components from the Salary Structure. It reads
+  them from the assignment:
+
+      salary_slip.py         self._evaluated_components = self._get_ssa_doc().get_evaluated_components()
+      salary_structure_...   if condition and not _safe_eval(condition, ...): continue
+
+  That runs with NO PAYROLL PERIOD, so attendance hours are always 0 there.
+  Any row conditioned on hours > 0 is dropped before the slip sees it and
+  never appears, whatever the real month looks like.
+
+  Payroll BASIS is a property of the employee's shift, not of the period,
+  so it IS resolvable at assignment time - CustomSalaryStructureAssignment
+  ._get_component_eval_context resolves it via shift_on_date(). That is
+  what lets these conditions survive the filter for the right employees.
+
+TRAP 2 - "hours == 0" is ambiguous.
+
+  It means either "this employee is on a payment-days shift" or "this
+  employee is on an hours shift and worked nothing". Switching on it sends
+  the second group into the payment-days branch, where they collect holiday
+  pay their hourly rate was never built to include.
+
+  Measured before the fix: employee 108-U2-0017, OT Shift (Working Hours),
+  12 attendance rows all Absent, 0 hours worked:
+      payment_days 6/31 -> Basic = 17010 x 6/31 = 3292, net 2867
+  He should earn nothing. 30 employees were in this state for August 2026.
+
+  After the fix: gross 0.00.
+
+
+-------------------------------------------------------------------------
+4. THE RATE, AND WHY HOLIDAYS ARE THEIR OWN LINE
+-------------------------------------------------------------------------
+
+BASE pay prices worked hours AND paid holiday hours together:
+
+    Basic (Hourly) = (custom_regular_working_hours + custom_holiday_hours)
+                     x (base / custom_standard_month_hours)
+
+    custom_holiday_hours        = Holiday List days x custom_standard_day_hours,
+                                  less any Sunday the deduction policy withdrew
+    custom_standard_month_hours = CALENDAR days in the period x day hours
+
+    EVERY hour figure here is EFFECTIVE hours - shift duration MINUS the
+    unpaid lunch break (Shift Type.custom_lunch_break_minutes). An
+    09:00-17:30 shift is 8.5 h gross; with a 60-minute unpaid lunch its
+    custom_standard_day_hours is 7.5.
+
+    Calendar days, not working days, because worked + holiday hours together
+    span the whole month. Full attendance then pays exactly base every month
+    (base 13,486, effective day 7.5 h):
+
+        Feb  180.0 worked + 30.0 holiday = 210.0 h x 64.219 = 13,486  (100%)
+        Aug  187.5 worked + 45.0 holiday = 232.5 h x 58.004 = 13,486  (100%)
+        Nov  172.5 worked + 52.5 holiday = 225.0 h x 59.938 = 13,486  (100%)
+
+    The lunch deduction is rate-neutral over a full month: hours fall and the
+    rate rises in the same proportion, so full attendance still pays exactly
+    base. What it moves is the value of a MARGINAL hour and the point at
+    which overtime starts.
+
+    Holidays could instead be left implicit in an inflated rate (divide by
+    working days only - the same money). Crediting them explicitly is better
+    for three reasons:
+
+      1. The payslip SHOWS the holiday pay. An approver can point at it.
+      2. The Sunday deduction gets a correct pool to take from - see below.
+      3. An hours employee with no attendance lands on exactly the same figure
+         as native Present / Absent (13,486 x 6/31 = 2,610.19 both ways), so
+         the two bases stop diverging.
+
+    custom_standard_day_hours follows each shift's own EFFECTIVE duration
+    (7.5 for 09:00-17:30 with a 60-minute lunch, 8 for a 22:00-06:00 Night
+    Shift with no break), so mixed-shift sites price correctly without
+    touching the formula.
+
+    Shift Type.custom_ot_qualifying_hours must be set to that SAME effective
+    figure - 7.5, not the 8.5 gross duration. Set to the gross figure it
+    swallows the first hour past a full day before overtime starts.
+
+OVERTIME keeps a flat 26-day rate (deliberate business decision):
+
+        base / 26 / custom_standard_day_hours   x   multiplier
+
+    On the effective day, at a x2 multiplier:
+
+        13,486 / 26 / 7.5 x 2  =  138.32 per OT hour
+
+    So an overtime hour is worth the same all year while a base hour moves with
+    month length:
+
+        Aug   base hour 58.004   Nov   base hour 59.938   OT hour 138.32 flat
+
+    State this in the approval SOP - a reviewer comparing the two will
+    otherwise read it as an error.
+
+
+-------------------------------------------------------------------------
+5. OVERTIME SITS ON TOP, UNCHANGED
+-------------------------------------------------------------------------
+
+Overtime is a separate component and needs no change - see
+ot_salary_component_formula.txt. There is no double-count risk between
+them: custom_base_hours is written as (worked - uncapped OT), so an hour
+paid as overtime was already removed from base hours.
+
+Hours trimmed by the Overtime Type daily cap are paid by NEITHER
+component. That is deliberate - letting them fall back into base would
+return capped overtime at basic rate and defeat the cap.
+
+
+-------------------------------------------------------------------------
+6. EMPLOYEE CHANGES BASIS MID-MONTH
+-------------------------------------------------------------------------
+
+An employee moved from a Present/Absent shift to a Working Hours shift (or
+back) part-way through a month gets ONE basis for the whole slip - whichever
+their period shift resolves to - and is paid entirely on that branch. The
+days spent on the other basis are not separately valued.
+
+_resolve_period_shift picks the shift stamped on the MOST attendance rows in
+the period, so the majority half wins and the minority half is absorbed.
+
+Scale on recode.com, August 2026: 1 employee of 487 (108-U2-0527, 1 day on
+OT Shift + 11 on Staff Shift).
+
+  OPERATIONAL (no code)
+      Change an employee's shift at a month boundary when the change crosses
+      a payroll-basis boundary. Mid-month moves between two shifts of the
+      SAME basis are fine and need no care.
+
+  CODE (not built)
+      Value each day on its own basis and pay a prorated split of both
+      components. Materially more complex than the current single-branch
+      model - raise it only if basis changes become common.
+
+
+-------------------------------------------------------------------------
+7. SUNDAY DEDUCTION - TAKES FROM THE HOLIDAY POOL
+-------------------------------------------------------------------------
+
+Each deducted Sunday is charged in whatever unit the employee is paid in:
+
+    Working Hours shift  ->  custom_holiday_hours -= sundays x custom_standard_day_hours
+    Present / Absent     ->  payment_days         -= sundays
+
+It must come out of the PAID HOLIDAY pool, never out of worked hours. A
+deducted Sunday is a paid weekly off being withdrawn - it cannot claw back
+wages the employee actually earned. Subtracting from worked hours (the earlier
+behaviour) paid six employees 0.00 on recode.com despite their having worked:
+
+    108-U2-0201  earned 3.14 h, 3 Sundays x 7.5 = 22.5 h deducted -> 0.00
+    108-U2-0333  earned 6.68 h, 2 Sundays x 7.5 = 15.0 h deducted -> 0.00
+
+Worked hours are now safe BY CONSTRUCTION, not by an added cap: every
+deductible Sunday is itself a Holiday List day, and the weekly rule takes at
+most one Sunday per week, so the deduction can never exceed the credit.
+Measured across all 474 August employees: max 3 Sundays deducted against a
+6-day credit, zero cases where the deduction exceeded it.
+
+The policy's "Applicable Shift Types" table does NOT scope this - its own field
+description scopes it to Advance Salary, and only advance_salary reads it. The
+Sunday rule runs for every shift.
+
+Note for the SOP: on a Working Hours slip, payment_days is left untouched, so
+the slip shows a payment-days figure that does not reflect the deduction while
+the Sunday Deductions table does. Hours are what that employee is paid from.
+
+
+-------------------------------------------------------------------------
+8. VERIFY BEFORE ENABLING
+-------------------------------------------------------------------------
+
+  [ ] Present/Absent employee: custom_regular_working_hours = 0,
+      Component A fires, Component B absent. Net pay unchanged from
+      before the feature.
+  [ ] Working Hours employee: Component B fires, Component A absent.
+      Exactly one basic-type row on the slip.
+  [ ] Perfect month: Component B = base EXACTLY. Worked + holiday hours
+      equal calendar days x custom_standard_day_hours, so the rate cancels.
+      Aug 2026: 187.5 + 45.0 = 232.5 h x 58.004 = 13,486.
+  [ ] custom_standard_day_hours reflects the EFFECTIVE day (duration minus
+      the unpaid lunch break), and Shift Type.custom_ot_qualifying_hours is
+      set to the same figure - 7.5, not 8.5, on an 09:00-17:30 shift.
+  [ ] Employee who crossed a payroll-basis boundary mid-month: see
+      section 6. Expect UNDERPAYMENT until that is addressed. On
+      recode.com August 2026 this is 108-U2-0527 only.
+  [ ] Overtime employee: base hours + OT hours = hours actually worked,
+      minus anything the daily cap trimmed.
+=========================================================================

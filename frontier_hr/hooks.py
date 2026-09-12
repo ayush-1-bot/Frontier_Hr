@@ -5,254 +5,173 @@ app_description = "HR For Frontier Softech"
 app_email = "dev@frontiersoftech.com"
 app_license = "mit"
 
-# Apps
-# ------------------
+# Overtime Extension drives Attendance, Overtime Slip and Salary Slip, all of
+# which are hrms doctypes.
+required_apps = ["frappe", "hrms"]
 
-# required_apps = []
-
-# Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "frontier_hr",
-# 		"logo": "/assets/frontier_hr/logo.png",
-# 		"title": "Frontier Hr",
-# 		"route": "/frontier_hr",
-# 		"has_permission": "frontier_hr.api.permission.has_app_permission"
-# 	}
-# ]
-
-# Includes in <head>
-# ------------------
-
-# include js, css files in header of desk.html
-# app_include_css = "/assets/frontier_hr/css/frontier_hr.css"
-# app_include_js = "/assets/frontier_hr/js/frontier_hr.js"
-
-# include js, css files in header of web template
-# web_include_css = "/assets/frontier_hr/css/frontier_hr.css"
-# web_include_js = "/assets/frontier_hr/js/frontier_hr.js"
-
-# include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "frontier_hr/public/scss/website"
-
-# include js, css files in header of web form
-# webform_include_js = {"doctype": "public/js/doctype.js"}
-# webform_include_css = {"doctype": "public/css/doctype.css"}
-
-# include js in page
-# page_js = {"page" : "public/js/file.js"}
-
-# include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
-# doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
-# doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
-
-# Svg Icons
-# ------------------
-# include app icons in desk
-# app_include_icons = "frontier_hr/public/icons.svg"
-
-# Home Pages
-# ----------
-
-# application home page (will override Website Settings)
-# home_page = "login"
-
-# website user home page (by Role)
-# role_home_page = {
-# 	"Role": "home_page"
-# }
-
-# Generators
-# ----------
-
-# automatically create page for each record of this doctype
-# website_generators = ["Web Page"]
-
-# automatically load and sync documents of this doctype from downstream apps
-# importable_doctypes = [doctype_1]
-
-# Jinja
-# ----------
-
-# add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "frontier_hr.utils.jinja_methods",
-# 	"filters": "frontier_hr.utils.jinja_filters"
-# }
-
-# Installation
-# ------------
-
-# before_install = "frontier_hr.install.before_install"
-# after_install = "frontier_hr.install.after_install"
-
-# Uninstallation
-# ------------
-
-# before_uninstall = "frontier_hr.uninstall.before_uninstall"
-# after_uninstall = "frontier_hr.uninstall.after_uninstall"
-
-# Integration Setup
-# ------------------
-# To set up dependencies/integrations with other apps
-# Name of the app being installed is passed as an argument
-
-# before_app_install = "frontier_hr.utils.before_app_install"
-# after_app_install = "frontier_hr.utils.after_app_install"
-
-# Integration Cleanup
-# -------------------
-# To clean up dependencies/integrations with other apps
-# Name of the app being uninstalled is passed as an argument
-
-# before_app_uninstall = "frontier_hr.utils.before_app_uninstall"
-# after_app_uninstall = "frontier_hr.utils.after_app_uninstall"
-
-# Build
-# ------------------
-# To hook into the build process
-
-# after_build = "frontier_hr.build.after_build"
-
-# Desk Notifications
-# ------------------
-# See frappe.core.notifications.get_notification_config
-
-# notification_config = "frontier_hr.notifications.get_notification_config"
-
-# Permissions
-# -----------
-# Permissions evaluated in scripted ways
-
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
-
+# ---------------------------------------------------------------------------
 # Document Events
-# ---------------
-# Hook on document methods and events
+# ---------------------------------------------------------------------------
+doc_events = {
+	"Salary Slip": {
+		# before_validate, NOT before_save: Frappe runs before_validate ->
+		# validate -> before_save, and SalarySlip.validate() calls
+		# calculate_net_pay(). Anything written in before_save lands AFTER the
+		# salary component formulas have been evaluated, so formulas would read
+		# the previous save's values. Fires on both the save and the submit
+		# path, so no before_submit duplicate is needed.
+		"before_validate": [
+			"frontier_hr.overtime_extension.overrides.salary_slip.fetch_ot_hours",
+			"frontier_hr.overtime_extension.overrides.salary_slip.fetch_working_hours",
+		],
+	},
+	"Attendance": {
+		"before_save": "frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
+		"before_submit": "frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
+	},
+	# hrms flips the Attendance day to On Leave with db_set, which runs no
+	# hooks — so the hours have to be recomputed from here. See the module
+	# docstring in overtime_extension/overrides/leave_application.py.
+	"Leave Application": {
+		"on_submit": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
+		"on_cancel": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
+		"on_update_after_submit": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
+	},
+	"Overtime Slip": {
+		"validate": "frontier_hr.overtime_extension.overrides.overtime_slip.validate_ot_slip",
+		"on_submit": "frontier_hr.overtime_extension.overrides.overtime_slip.on_submit_ot_slip",
+	},
+}
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
-
+# ---------------------------------------------------------------------------
 # Scheduled Tasks
-# ---------------
+# ---------------------------------------------------------------------------
+scheduler_events = {
+	# Self-gates on Miss Punch Report Settings (enabled + send_time +
+	# last_run_date), so running it every hour costs one Singles read.
+	"hourly": [
+		"frontier_hr.overtime_extension.tasks.run_if_due",
+	],
+	"cron": {
+		# Daily 11 PM — daily threshold alert, after shifts are closed.
+		"0 23 * * *": [
+			"frontier_hr.overtime_extension.tasks.daily_ot_threshold_check",
+		],
+		# Every Monday 9 AM — weekly threshold alert.
+		"0 9 * * 1": [
+			"frontier_hr.overtime_extension.tasks.weekly_ot_threshold_check",
+		],
+		# 1st of every month at 9 AM — the task self-gates on the company's
+		# fiscal-quarter boundary (Apr-Mar by default; reads Frappe FY setting).
+		"0 9 1 * *": [
+			"frontier_hr.overtime_extension.tasks.quarterly_ot_threshold_check",
+		],
+	},
+}
 
-# scheduler_events = {
-# 	"all": [
-# 		"frontier_hr.tasks.all"
-# 	],
-# 	"daily": [
-# 		"frontier_hr.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"frontier_hr.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"frontier_hr.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"frontier_hr.tasks.monthly"
-# 	],
-# }
+# ---------------------------------------------------------------------------
+# After Migrate
+# ---------------------------------------------------------------------------
+# These pin the Custom Field layout (insert_after, idx, creation tie-breaker,
+# depends_on, precision) on the four doctypes this app extends. They run on
+# after_migrate rather than from patches.txt on purpose: fixture import happens
+# during every migrate and resets those columns, and a patches.txt entry would
+# run once and then never again. All four are idempotent.
+after_migrate = [
+	"frontier_hr.patches.fix_overtime_type_field_order.execute",
+	"frontier_hr.patches.fix_shift_type_field_order.execute",
+	"frontier_hr.patches.fix_attendance_field_order.execute",
+	"frontier_hr.patches.fix_salary_slip_field_order.execute",
+]
 
-# Testing
-# -------
+# ---------------------------------------------------------------------------
+# Client Scripts
+# ---------------------------------------------------------------------------
+doctype_js = {
+	"Overtime Slip": "overtime_extension/client_scripts/overtime_slip.js",
+	# Additive to hrms core's shift_type.js — adds the "Fix Delayed Sync
+	# Attendance" button. Server side is whitelisted methods only, no hooks.
+	"Shift Type": "delayed_attendance_fix/client_scripts/shift_type.js",
+}
 
-# before_tests = "frontier_hr.install.before_tests"
+# ---------------------------------------------------------------------------
+# Class Overrides
+# ---------------------------------------------------------------------------
+override_doctype_class = {
+	"Overtime Slip": "frontier_hr.overtime_extension.overrides.overtime_slip_class.CustomOvertimeSlip",
+	# Populates the hours/basis fields on the pre-save preview path, where
+	# before_validate never runs — see the salary_slip_class docstring.
+	"Salary Slip": "frontier_hr.overtime_extension.overrides.salary_slip_class.CustomSalarySlip",
+	"Salary Structure Assignment": "frontier_hr.overtime_extension.overrides.salary_structure_assignment.CustomSalaryStructureAssignment",
+}
 
-# Extend DocType Class
-# ------------------------------
-#
-# Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "frontier_hr.custom.task.CustomTaskMixin"
-# }
-
-# Overriding Methods
-# ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "frontier_hr.event.get_events"
-# }
-#
-# each overriding function accepts a `data` argument;
-# generated from the base implementation of the doctype dashboard,
-# along with any modifications made in other Frappe apps
-# override_doctype_dashboards = {
-# 	"Task": "frontier_hr.task.get_dashboard_data"
-# }
-
-# exempt linked doctypes from being automatically cancelled
-#
-# auto_cancel_exempted_doctypes = ["Auto Repeat"]
-
-# Ignore links to specified DocTypes when deleting documents
-# -----------------------------------------------------------
-
-# ignore_links_on_delete = ["Communication", "ToDo"]
-
-# Request Events
-# ----------------
-# before_request = ["frontier_hr.utils.before_request"]
-# after_request = ["frontier_hr.utils.after_request"]
-
-# Job Events
-# ----------
-# before_job = ["frontier_hr.utils.before_job"]
-# after_job = ["frontier_hr.utils.after_job"]
-
-# User Data Protection
-# --------------------
-
-# user_data_fields = [
-# 	{
-# 		"doctype": "{doctype_1}",
-# 		"filter_by": "{filter_by}",
-# 		"redact_fields": ["{field_1}", "{field_2}"],
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_2}",
-# 		"filter_by": "{filter_by}",
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_3}",
-# 		"strict": False,
-# 	},
-# 	{
-# 		"doctype": "{doctype_4}"
-# 	}
-# ]
-
-# Authentication and authorization
-# --------------------------------
-
-# auth_hooks = [
-# 	"frontier_hr.auth.validate"
-# ]
-
-# Automatically update python controller files with type annotations for this app.
-# export_python_type_annotations = True
-
-# default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
-
-# Translation
-# ------------
-# List of apps whose translatable strings should be excluded from this app's translations.
-# ignore_translatable_strings_from = []
-
+# ---------------------------------------------------------------------------
+# Fixtures
+# Custom Fields exported so they install automatically on bench migrate.
+# The OT Slip Batch / Miss Punch / OT Alert Recipient doctypes ship in-app
+# under overtime_extension/doctype and need no fixture.
+# ---------------------------------------------------------------------------
+fixtures = [
+	{
+		"doctype": "Custom Field",
+		"filters": [
+			["dt", "in", ["Overtime Type", "Shift Type", "Attendance", "Overtime Slip", "Salary Slip"]],
+			[
+				"fieldname",
+				"in",
+				[
+					# Overtime Type — buffers, caps, alert recipients
+					"ot_buffer_section",
+					"pre_shift_buffer_minutes",
+					"ot_buffer_col_break",
+					"post_shift_buffer_minutes",
+					"ot_limits_section",
+					"weekly_max_ot_hours",
+					"ot_limits_col_break",
+					"quarterly_max_ot_hours",
+					"ot_alerts_section",
+					"alert_threshold_percent",
+					"alert_recipients",
+					# Shift Type — OT rules and payroll basis
+					"custom_ot_rules_section",
+					"custom_lunch_break_minutes",
+					"custom_ot_rules_col_break",
+					"custom_ot_qualifying_hours",
+					"custom_apply_ot_buffers",
+					"custom_cap_base_at_shift_hours",
+					"custom_payroll_section",
+					"custom_payroll_basis",
+					"custom_payroll_col_break",
+					"custom_pay_hours_when_absent",
+					# Attendance — computed OT and base hours
+					"custom_att_ot_section",
+					"custom_att_ot_col1",
+					"custom_early_ot_minutes",
+					"custom_att_ot_col2",
+					"custom_late_ot_minutes",
+					"custom_total_ot_hours",
+					"custom_ot_status",
+					"custom_att_hours_section",
+					"custom_base_hours",
+					# Overtime Slip — actual vs payable after caps
+					"custom_actual_ot_hours",
+					"custom_payable_ot_hours",
+					# Salary Slip — OT and hours-basis inputs to the formulas
+					"custom_ot_section",
+					"custom_ot_col_break",
+					"custom_actual_ot_hours",
+					"custom_payable_ot_hours",
+					"custom_standard_multiplier",
+					"custom_hours_section",
+					"custom_hours_col_break",
+					"custom_total_working_hours",
+					"custom_regular_working_hours",
+					"custom_holiday_hours",
+					"custom_standard_day_hours",
+					"custom_standard_month_hours",
+					"custom_payroll_basis",
+				],
+			],
+		],
+	},
+]

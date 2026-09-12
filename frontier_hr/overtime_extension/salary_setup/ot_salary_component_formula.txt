@@ -1,0 +1,41 @@
+=======================================================
+OT Salary Component — Formula Setup Guide
+=======================================================
+
+DocType  : Salary Component
+Name     : Overtime Pay  (or your existing OT component name)
+Type     : Earning
+Formula  : YES (toggle on)
+
+Formula to enter:
+-----------------
+
+(
+    frappe.db.sql("""
+        SELECT COALESCE(SUM(custom_payable_ot_hours), 0)
+        FROM `tabOvertime Slip`
+        WHERE employee = %(employee)s
+          AND docstatus = 1
+          AND start_date >= %(start_date)s
+          AND end_date   <= %(end_date)s
+    """, {
+        "employee":   employee,
+        "start_date": start_date,
+        "end_date":   end_date
+    })[0][0] or 0
+) * (basic / 26 / 8)
+
+
+Explanation:
+------------
+  basic / 26     = daily rate on 26-day basis
+  daily / 8      = hourly rate (adjust 8 if shift hours differ)
+  × payable_ot_hours from submitted Overtime Slips
+
+Settings:
+---------
+  Depends on Payment Days : NO  (uncheck)
+  Statistical Component   : NO
+
+Normal salary continues to use 30-day logic — untouched.
+=======================================================
