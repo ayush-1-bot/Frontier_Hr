@@ -75,6 +75,7 @@ def _get_rows(filters):
 					"employee": att.employee,
 					"employee_name": att.employee_name,
 					"company": att.company,
+					"branch": att.branch,
 					"punch_date": att.punch_date,
 					"shift": att.shift,
 					"punch_count": 0,
@@ -102,6 +103,7 @@ def _get_rows(filters):
 				"employee": employee,
 				"employee_name": day.employee_name,
 				"company": day.company,
+				"branch": day.branch,
 				"punch_date": punch_date,
 				"shift": day.shift,
 				"issue": issue,
@@ -147,6 +149,9 @@ def _filter_conditions(filters, alias, date_expression):
 	if filters.company:
 		conditions.append("e.company = %(company)s")
 		values["company"] = filters.company
+	if branches := frappe.parse_json(filters.branch or "[]"):
+		conditions.append("e.branch IN %(branch)s")
+		values["branch"] = tuple(branches)
 
 	# Same two exclusions the nightly mailer applies.
 	conditions.append("e.status = 'Active'")
@@ -178,6 +183,7 @@ def _punch_days(filters):
 			c.employee,
 			e.employee_name,
 			e.company,
+			e.branch,
 			DATE(COALESCE(c.shift_start, c.time)) AS punch_date,
 			MAX(c.shift)        AS shift,
 			COUNT(*)            AS punch_count,
@@ -187,7 +193,7 @@ def _punch_days(filters):
 		FROM `tabEmployee Checkin` c
 		INNER JOIN `tabEmployee` e ON e.name = c.employee
 		WHERE {" AND ".join(conditions)}
-		GROUP BY c.employee, DATE(COALESCE(c.shift_start, c.time)), e.employee_name, e.company
+		GROUP BY c.employee, DATE(COALESCE(c.shift_start, c.time)), e.employee_name, e.company, e.branch
 		""",
 		values,
 		as_dict=True,
@@ -208,6 +214,7 @@ def _half_punched_attendance(filters):
 			a.employee,
 			a.employee_name,
 			a.company,
+			e.branch,
 			a.attendance_date AS punch_date,
 			a.shift
 		FROM `tabAttendance` a
@@ -234,5 +241,6 @@ def _columns():
 		{"label": "Status", "fieldname": "status", "fieldtype": "Data", "width": 100},
 		{"label": "Working Hours", "fieldname": "working_hours", "fieldtype": "Float", "precision": 2, "width": 115},
 		{"label": "Base Hours", "fieldname": "base_hours", "fieldtype": "Float", "precision": 2, "width": 105},
+		{"label": "Branch", "fieldname": "branch", "fieldtype": "Link", "options": "Branch", "width": 120},
 		{"label": "Company", "fieldname": "company", "fieldtype": "Link", "options": "Company", "width": 140},
 	]

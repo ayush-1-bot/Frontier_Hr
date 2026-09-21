@@ -33,6 +33,13 @@ frappe.query_reports["Missed Punch"] = {
 			options: "Company",
 		},
 		{
+			fieldname: "branch",
+			label: __("Branch"),
+			fieldtype: "MultiSelectList",
+			// empty = all branches
+			get_data: (txt) => frappe.db.get_link_options("Branch", txt),
+		},
+		{
 			fieldname: "issue",
 			label: __("Issue"),
 			fieldtype: "Select",

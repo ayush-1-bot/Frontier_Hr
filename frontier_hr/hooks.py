@@ -52,6 +52,11 @@ scheduler_events = {
 	"hourly": [
 		"frontier_hr.overtime_extension.tasks.run_if_due",
 	],
+	# Branch-scoped replacement for hrms send_birthday_reminders (stopped in
+	# after_migrate below). See birthday_reminder/tasks.py.
+	"daily": [
+		"frontier_hr.birthday_reminder.tasks.send_branch_birthday_reminders",
+	],
 	"cron": {
 		# Daily 11 PM — daily threshold alert, after shifts are closed.
 		"0 23 * * *": [
@@ -82,6 +87,7 @@ after_migrate = [
 	"frontier_hr.patches.fix_shift_type_field_order.execute",
 	"frontier_hr.patches.fix_attendance_field_order.execute",
 	"frontier_hr.patches.fix_salary_slip_field_order.execute",
+	"frontier_hr.birthday_reminder.tasks.stop_hrms_birthday_job",
 ]
 
 # ---------------------------------------------------------------------------
@@ -115,7 +121,7 @@ fixtures = [
 	{
 		"doctype": "Custom Field",
 		"filters": [
-			["dt", "in", ["Overtime Type", "Shift Type", "Attendance", "Overtime Slip", "Salary Slip"]],
+			["dt", "in", ["Overtime Type", "Shift Type", "Attendance", "Overtime Slip", "Salary Slip", "HR Settings"]],
 			[
 				"fieldname",
 				"in",
@@ -170,6 +176,8 @@ fixtures = [
 					"custom_standard_day_hours",
 					"custom_standard_month_hours",
 					"custom_payroll_basis",
+					# HR Settings — branch-wise birthday toggle (birthday_reminder/)
+					"custom_branch_wise_birthday_reminders",
 				],
 			],
 		],

@@ -399,10 +399,35 @@ def process_miss_punches(settings):
 	if settings.notify_employee and records:
 		send_employee_emails(records, yesterday)
 
-	recipients = [r.user for r in (settings.recipients or []) if r.user]
-	if recipients:
-		if records or settings.send_empty_report:
-			send_consolidated_email(recipients, records, yesterday)
+	# Users sharing the same branch scope get one mail together.
+	for branches, users in get_recipient_scopes(settings.recipients).items():
+		rows = records if branches is None else [r for r in records if r.branch in branches]
+		if rows or settings.send_empty_report:
+			send_consolidated_email(users, rows, yesterday, branches)
+
+
+def get_recipient_scopes(recipient_rows):
+	"""{None | frozenset(branches): [users]}.
+
+	Miss Punch Recipient.branch holds a comma-separated list of branches
+	(set by the Select Branches button). Blank means all branches and wins over
+	any branch rows for the same user; several rows for one user are merged.
+	Employees with no branch appear only in all-branch reports."""
+	scope = {}  # user -> None (all) | set of branches
+	for r in recipient_rows or []:
+		if not r.user:
+			continue
+		branches = {b.strip() for b in (r.get("branch") or "").split(",") if b.strip()}
+		if not branches:
+			scope[r.user] = None
+		elif scope.get(r.user, set()) is not None:
+			scope.setdefault(r.user, set()).update(branches)
+
+	grouped = {}
+	for user, branches in scope.items():
+		key = None if branches is None else frozenset(branches)
+		grouped.setdefault(key, []).append(user)
+	return grouped
 
 
 def get_miss_punch_records(date):
@@ -427,7 +452,8 @@ def get_miss_punch_records(date):
 			a.status,
 			e.user_id,
 			e.company_email,
-			e.personal_email
+			e.personal_email,
+			e.branch
 		FROM `tabAttendance` a
 		INNER JOIN `tabEmployee` e ON e.name = a.employee
 		WHERE a.attendance_date = %(date)s
@@ -441,7 +467,7 @@ def get_miss_punch_records(date):
 			    AND la.docstatus = 1
 			    AND %(date)s BETWEEN la.from_date AND la.to_date
 		  )
-		ORDER BY a.department, a.employee_name
+		ORDER BY e.branch, a.department, a.employee_name
 		""",
 		{"date": date},
 		as_dict=True,
@@ -488,7 +514,8 @@ def send_employee_emails(records, date):
 			)
 
 
-def send_consolidated_email(recipients, records, date):
+def send_consolidated_email(recipients, records, date, branches=None):
+	scope = "All Branches" if branches is None else ", ".join(sorted(branches))
 	if records:
 		rows_html = "".join(
 			f"""
@@ -496,6 +523,7 @@ def send_consolidated_email(recipients, records, date):
 				<td>{i}</td>
 				<td>{frappe.utils.escape_html(r.employee)}</td>
 				<td>{frappe.utils.escape_html(r.employee_name or '')}</td>
+				<td>{frappe.utils.escape_html(r.branch or '-')}</td>
 				<td>{frappe.utils.escape_html(r.department or '-')}</td>
 				<td>{r.in_time or '<span style="color:#c0392b;">Missing</span>'}</td>
 				<td>{r.out_time or '<span style="color:#c0392b;">Missing</span>'}</td>
@@ -506,13 +534,14 @@ def send_consolidated_email(recipients, records, date):
 		)
 		message = f"""
 			<h3>Miss Punch Consolidated Report — {date}</h3>
+			<p>Branch: <b>{frappe.utils.escape_html(scope)}</b></p>
 			<p>Total records: <b>{len(records)}</b></p>
 			<table border="1" cellpadding="6" cellspacing="0"
 				style="border-collapse:collapse; font-size: 13px;">
 				<thead style="background:#f4f6f8;">
 					<tr>
 						<th>#</th><th>Employee ID</th><th>Name</th>
-						<th>Department</th><th>Check-In</th>
+						<th>Branch</th><th>Department</th><th>Check-In</th>
 						<th>Check-Out</th><th>Status</th>
 					</tr>
 				</thead>
@@ -525,12 +554,13 @@ def send_consolidated_email(recipients, records, date):
 	else:
 		message = f"""
 			<h3>Miss Punch Consolidated Report — {date}</h3>
+			<p>Branch: <b>{frappe.utils.escape_html(scope)}</b></p>
 			<p>No miss punch records found for <b>{date}</b>.</p>
 		"""
 
 	frappe.sendmail(
 		recipients=recipients,
-		subject=f"Miss Punch Report — {date} ({len(records)} records)",
+		subject=f"Miss Punch Report — {date} — {scope} ({len(records)} records)",
 		message=message,
 		now=False,
 	)

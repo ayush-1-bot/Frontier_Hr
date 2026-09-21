@@ -1,3 +1,6 @@
+# DEPRECATED 2026-09-21: report disabled (disabled=1 in the .json) - not needed,
+# and it errored (same report name also shipped by company_hr_ext). Kept on disk;
+# do not delete. Re-enable by setting disabled=0 and migrating.
 import math
 
 import frappe
