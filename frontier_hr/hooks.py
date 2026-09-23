@@ -37,6 +37,10 @@ doc_events = {
 		"on_cancel": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
 		"on_update_after_submit": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
 	},
+	# Lunch window -> custom_lunch_break_minutes. See overrides/shift_type.py.
+	"Shift Type": {
+		"validate": "frontier_hr.overtime_extension.overrides.shift_type.sync_lunch_minutes",
+	},
 	"Overtime Slip": {
 		"validate": "frontier_hr.overtime_extension.overrides.overtime_slip.validate_ot_slip",
 		"on_submit": "frontier_hr.overtime_extension.overrides.overtime_slip.on_submit_ot_slip",
@@ -141,6 +145,8 @@ fixtures = [
 					# Shift Type — OT rules and payroll basis
 					"custom_ot_rules_section",
 					"custom_lunch_break_minutes",
+					"custom_lunch_start",
+					"custom_lunch_end",
 					"custom_ot_rules_col_break",
 					"custom_ot_qualifying_hours",
 					"custom_apply_ot_buffers",

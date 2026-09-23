@@ -80,7 +80,7 @@ SHIFT_FIELDS = [
     "custom_lunch_break_minutes", "custom_ot_qualifying_hours",
     "custom_payroll_basis", "working_hours_calculation_based_on",
     "custom_apply_ot_buffers", "custom_cap_base_at_shift_hours",
-    "custom_pay_hours_when_absent",
+    "custom_pay_hours_when_absent", "custom_lunch_start", "custom_lunch_end",
 ]
 
 # Native Shift Type option that makes Attendance.working_hours exclude the gaps
@@ -308,7 +308,44 @@ def _effective_from_punches(doc, shift):
     elapsed = (
         get_datetime(doc.out_time) - get_datetime(doc.in_time)
     ).total_seconds() / 3600.0
-    return max(elapsed - _lunch_hours(shift), 0.0)
+    return max(elapsed - _day_lunch_hours(doc, shift), 0.0)
+
+
+def _day_lunch_hours(doc, shift):
+    """Lunch to deduct from THIS day's punches.
+
+    No lunch window on the shift (custom_lunch_start / custom_lunch_end empty):
+    the flat break, every day, as before.
+
+    With a window: only the part of the window the employee was actually on
+    site for comes off. On a 13:00-13:30 window, 09:00-18:00 loses the full 30
+    minutes; 13:30-18:00 and 09:00-13:00 lose nothing, since the employee was
+    not there over lunch. A day that only partly overlaps (in at 13:15) loses
+    the 15 minutes inside the window — all-or-nothing would pay a 13:29 exit
+    MORE than a 13:30 one, breaking "working longer never pays less". Capped at
+    _lunch_hours, which shift_type.sync_lunch_minutes keeps equal to the
+    window's length.
+
+    Only the punch-based path uses this. Shift-level figures (credited day, OT
+    eligibility bar) keep the flat break: a standard day does include lunch.
+    """
+    if not shift or not shift.get("custom_lunch_start") or not shift.get("custom_lunch_end"):
+        return _lunch_hours(shift)
+
+    in_dt, out_dt = get_datetime(doc.in_time), get_datetime(doc.out_time)
+    work_date = getdate(doc.attendance_date) if doc.get("attendance_date") else in_dt.date()
+    lunch_start = get_datetime(f"{work_date} {shift.custom_lunch_start}")
+    lunch_end = get_datetime(f"{work_date} {shift.custom_lunch_end}")
+    # Night shift: a lunch clock time earlier than the shift start falls on the
+    # next calendar day (Attendance is dated to the day the shift starts).
+    if shift.get("start_time") and lunch_start < get_datetime(f"{work_date} {shift.start_time}"):
+        lunch_start += timedelta(days=1)
+        lunch_end += timedelta(days=1)
+    if lunch_end <= lunch_start:
+        lunch_end += timedelta(days=1)
+
+    overlap = (min(out_dt, lunch_end) - max(in_dt, lunch_start)).total_seconds() / 3600.0
+    return min(max(overlap, 0.0), _lunch_hours(shift))
 
 
 def _override_native_standard_hours(doc, shift):

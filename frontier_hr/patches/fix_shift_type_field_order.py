@@ -21,6 +21,8 @@ native is split):
     Payroll & Hours                [custom section, ALWAYS visible]
         Payroll Basis              | Cap Base Hours at Shift Hours
         Lunch Break (Minutes)      |
+        Lunch Start                |
+        Lunch End                  |
 
 The split matters. The lunch break and the base cap were originally filed
 under Overtime Rules, which read as though they were overtime settings —
@@ -60,7 +62,9 @@ FIELD_ORDER = [
 	("custom_payroll_section", "custom_apply_ot_buffers", None),
 	("custom_payroll_basis", "custom_payroll_section", None),
 	("custom_lunch_break_minutes", "custom_payroll_basis", None),
-	("custom_payroll_col_break", "custom_lunch_break_minutes", None),
+	("custom_lunch_start", "custom_lunch_break_minutes", None),
+	("custom_lunch_end", "custom_lunch_start", None),
+	("custom_payroll_col_break", "custom_lunch_end", None),
 	("custom_cap_base_at_shift_hours", "custom_payroll_col_break", None),
 	("custom_pay_hours_when_absent", "custom_cap_base_at_shift_hours", HOURS_BASIS_GATE),
 ]
