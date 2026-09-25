@@ -27,10 +27,13 @@ EFFECTIVE HOURS
     of the Shift Type's unpaid lunch break (`custom_lunch_break_minutes`). Pay
     is never based on the full shift duration. `_worked_hours` remains the raw
     measurement of time on site; `_effective_worked_hours` is what the day is
-    worth, and it is the only one the pay passes consult. The one shift setting
-    that changes this is "Every Valid Check-in and Check-out", where hrms has
-    already removed the punch-out gap from working_hours and a second deduction
-    would double-count — see _effective_worked_hours.
+    worth, and it is the only one the pay passes consult.
+
+    The break comes off under BOTH `working_hours_calculation_based_on`
+    settings, by one rule: deduct the part of the lunch window the employee was
+    counted as working for. What the setting changes is only which spans count
+    — punch pairs, or one unbroken first-in to last-out span. See
+    _day_lunch_hours.
 
   OT PASS     (_compute_overtime) — runs only when the Shift Type has
       `allow_overtime` on and an `overtime_type` set. Independent of the
@@ -81,7 +84,14 @@ SHIFT_FIELDS = [
     "custom_payroll_basis", "working_hours_calculation_based_on",
     "custom_apply_ot_buffers", "custom_cap_base_at_shift_hours",
     "custom_pay_hours_when_absent", "custom_lunch_start", "custom_lunch_end",
+    "determine_check_in_and_check_out",
 ]
+
+# hrms pairs the day's punches one of two ways, and the two disagree on data
+# where log_type is unreliable — an alternating-mode device often writes every
+# log as IN. _punch_pairs has to mirror whichever the shift uses, or the hours
+# this module derives drift from the ones hrms stored.
+ALTERNATING_PUNCHES = "Alternating entries as IN and OUT during the same shift"
 
 # Native Shift Type option that makes Attendance.working_hours exclude the gaps
 # between punch pairs (a lunch punch-out/in), rather than measuring first-in to
@@ -231,9 +241,6 @@ def _effective_worked_hours(doc, shift):
     """
     worked = _worked_hours(doc)
 
-    if shift and shift.get("working_hours_calculation_based_on") == EXCLUDES_BREAKS:
-        return worked
-
     if _override_applies(doc, shift):
         # _override_native_working_hours already wrote the effective figure into
         # the field, so deducting again would take the break off twice. Derived
@@ -252,12 +259,18 @@ def _override_applies(doc, shift):
     because _override_native_working_hours rewrote it. Single source of truth
     for that condition — the override and the reader must never disagree, or
     the break is deducted twice or not at all."""
-    return bool(
-        shift
-        and shift.get("working_hours_calculation_based_on") != EXCLUDES_BREAKS
-        and doc.get("in_time")
-        and doc.get("out_time")
-    )
+    if not (shift and doc.get("in_time") and doc.get("out_time")):
+        return False
+
+    # Under "Every Valid Check-in and Check-out" the raw figure is the sum of
+    # the punch PAIRS, which can only be rebuilt while the Employee Checkin
+    # rows are still there. Without them (HR typed the hours by hand, or the
+    # logs were purged) there is nothing to recompute from and the stored value
+    # has to stand, or each save would deduct the break again.
+    if shift.get("working_hours_calculation_based_on") == EXCLUDES_BREAKS:
+        return bool(_punch_pairs(doc, shift))
+
+    return True
 
 
 def _override_native_working_hours(doc, shift):
@@ -298,54 +311,159 @@ def _override_native_working_hours(doc, shift):
     doc.working_hours = round(_effective_from_punches(doc, shift), 4)
 
 
+def _punch_pairs(doc, shift):
+    """The day's punches paired into worked spans, exactly the way hrms pairs
+    them in employee_checkin.calculate_working_hours.
+
+    Two modes, and they must not be conflated. Under "Alternating entries as IN
+    and OUT during the same shift" hrms IGNORES log_type and pairs by position
+    — the 1st log with the 2nd, the 3rd with the 4th — because devices in that
+    mode routinely stamp every log as IN. Pairing on log_type there would find
+    no pairs at all on such data, and this module's hours would drift from the
+    ones hrms stored. Under "Strictly based on Log Type" an IN is matched with
+    the next OUT, and anything unpaired is dropped.
+
+    Looked up by time rather than by the Employee Checkin `attendance` link:
+    hrms creates the Attendance row FIRST and stamps that link on the logs
+    afterwards, so on the insert that matters the link is still empty. Every
+    log of this day lies between the row's own first and last punch, which
+    bounds the window tightly enough to exclude a second shift.
+
+    Empty when the row has no logs — a day HR typed by hand, or one whose logs
+    were purged.
+    """
+    if not (doc.get("employee") and doc.get("in_time") and doc.get("out_time")):
+        return []
+
+    logs = frappe.get_all(
+        "Employee Checkin",
+        filters={
+            "employee": doc.employee,
+            "skip_auto_attendance": 0,
+            "time": ["between", [get_datetime(doc.in_time), get_datetime(doc.out_time)]],
+        },
+        fields=["time", "log_type"],
+        order_by="time asc",
+    )
+
+    if shift and shift.get("determine_check_in_and_check_out") == ALTERNATING_PUNCHES:
+        times = [get_datetime(log.time) for log in logs]
+        # A trailing odd log has no partner and earns nothing, same as hrms.
+        return list(zip(times[::2], times[1::2]))
+
+    pairs, open_in = [], None
+    for log in logs:
+        if log.log_type == "IN":
+            if open_in is None:
+                open_in = get_datetime(log.time)
+        elif log.log_type == "OUT" and open_in:
+            pairs.append((open_in, get_datetime(log.time)))
+            open_in = None
+    return pairs
+
+
+def _worked_intervals(doc, shift):
+    """Spans the employee COUNTS as working, which is what the lunch window is
+    measured against.
+
+    Under "Every Valid Check-in and Check-out" that is the punch pairs: an
+    employee who punches out over lunch is not working during the gap, and hrms
+    has already left it out of working_hours. Under "First Check-in and Last
+    Check-out" it is one unbroken span from first in to last out, because that
+    is how hrms measures the day — the gaps are paid.
+    """
+    if shift and shift.get("working_hours_calculation_based_on") == EXCLUDES_BREAKS:
+        pairs = _punch_pairs(doc, shift)
+        if pairs:
+            return pairs
+
+    if doc.get("in_time") and doc.get("out_time"):
+        return [(get_datetime(doc.in_time), get_datetime(doc.out_time))]
+    return []
+
+
+def _raw_from_punches(doc, shift):
+    """Hours before the lunch break, rebuilt from the punches exactly the way
+    the shift measures them. Pure function of the punches, which is what keeps
+    the override idempotent across re-saves."""
+    return sum((end - start).total_seconds() for start, end in _worked_intervals(doc, shift)) / 3600.0
+
+
 def _effective_from_punches(doc, shift):
-    """Effective hours computed straight from the punches — last-out minus
-    first-in, less the unpaid break. Exactly how hrms defines working_hours
-    under "First Check-in and Last Check-out", which is what makes the override
-    idempotent: it is a pure function of the punches, so re-running the hook on
-    an already-overridden row reproduces the same number instead of deducting
-    the break a second time."""
-    elapsed = (
-        get_datetime(doc.out_time) - get_datetime(doc.in_time)
-    ).total_seconds() / 3600.0
-    return max(elapsed - _day_lunch_hours(doc, shift), 0.0)
+    """Effective hours computed straight from the punches, less the unpaid
+    break. Re-running the hook on an already-overridden row reproduces the same
+    number instead of deducting the break a second time."""
+    return max(_raw_from_punches(doc, shift) - _day_lunch_hours(doc, shift), 0.0)
+
+
+def _lunch_window(doc, shift):
+    """The shift's lunch window as datetimes on this row's date, or None when
+    the shift has no window configured."""
+    if not shift or not shift.get("custom_lunch_start") or not shift.get("custom_lunch_end"):
+        return None
+
+    work_date = getdate(doc.attendance_date) if doc.get("attendance_date") else getdate(doc.in_time)
+    start = get_datetime(f"{work_date} {shift.custom_lunch_start}")
+    end = get_datetime(f"{work_date} {shift.custom_lunch_end}")
+    # Night shift: a lunch clock time earlier than the shift start falls on the
+    # next calendar day (Attendance is dated to the day the shift starts).
+    if shift.get("start_time") and start < get_datetime(f"{work_date} {shift.start_time}"):
+        start += timedelta(days=1)
+        end += timedelta(days=1)
+    if end <= start:
+        end += timedelta(days=1)
+    return start, end
 
 
 def _day_lunch_hours(doc, shift):
     """Lunch to deduct from THIS day's punches.
 
-    No lunch window on the shift (custom_lunch_start / custom_lunch_end empty):
-    the flat break, every day, as before.
+    ONE rule covers both `working_hours_calculation_based_on` settings: deduct
+    the part of the lunch window the employee was COUNTED AS WORKING for. What
+    differs between the settings is only which spans count — see
+    _worked_intervals — so neither setting can double-deduct the break nor
+    silently skip it.
 
-    With a window: only the part of the window the employee was actually on
-    site for comes off. On a 13:00-13:30 window, 09:00-18:00 loses the full 30
-    minutes; 13:30-18:00 and 09:00-13:00 lose nothing, since the employee was
-    not there over lunch. A day that only partly overlaps (in at 13:15) loses
-    the 15 minutes inside the window — all-or-nothing would pay a 13:29 exit
-    MORE than a 13:30 one, breaking "working longer never pays less". Capped at
-    _lunch_hours, which shift_type.sync_lunch_minutes keeps equal to the
-    window's length.
+      * 13:00-13:30 window, punched 09:30-18:30 on either setting: the whole
+        30 minutes comes off.
+      * Same window, punched 09:30-13:00 and 13:30-18:30 under "Every Valid
+        Check-in and Check-out": nothing comes off. hrms already dropped the
+        gap, and taking the break again would charge lunch twice.
+      * Same punches under "First Check-in and Last Check-out": the full 30
+        minutes comes off, because hrms paid the gap.
+      * Arrived 13:15: only the 15 minutes inside the window comes off.
+        All-or-nothing would pay a 13:29 exit MORE than a 13:30 one, breaking
+        "working longer never pays less".
+
+    NO WINDOW configured — the flat break, less whatever the punch gaps already
+    removed. On "First Check-in and Last Check-out" no gap is ever excluded, so
+    this is the plain flat break as before; on the other setting a lunch
+    punch-out that already cost 30 minutes leaves nothing further to take.
 
     Only the punch-based path uses this. Shift-level figures (credited day, OT
     eligibility bar) keep the flat break: a standard day does include lunch.
     """
-    if not shift or not shift.get("custom_lunch_start") or not shift.get("custom_lunch_end"):
-        return _lunch_hours(shift)
+    flat = _lunch_hours(shift)
+    if not flat:
+        return 0.0
 
-    in_dt, out_dt = get_datetime(doc.in_time), get_datetime(doc.out_time)
-    work_date = getdate(doc.attendance_date) if doc.get("attendance_date") else in_dt.date()
-    lunch_start = get_datetime(f"{work_date} {shift.custom_lunch_start}")
-    lunch_end = get_datetime(f"{work_date} {shift.custom_lunch_end}")
-    # Night shift: a lunch clock time earlier than the shift start falls on the
-    # next calendar day (Attendance is dated to the day the shift starts).
-    if shift.get("start_time") and lunch_start < get_datetime(f"{work_date} {shift.start_time}"):
-        lunch_start += timedelta(days=1)
-        lunch_end += timedelta(days=1)
-    if lunch_end <= lunch_start:
-        lunch_end += timedelta(days=1)
+    intervals = _worked_intervals(doc, shift)
+    if not intervals:
+        return flat
 
-    overlap = (min(out_dt, lunch_end) - max(in_dt, lunch_start)).total_seconds() / 3600.0
-    return min(max(overlap, 0.0), _lunch_hours(shift))
+    window = _lunch_window(doc, shift)
+    if not window:
+        # Gaps between pairs are time hrms has already left out of the day.
+        span = (intervals[-1][1] - intervals[0][0]).total_seconds() / 3600.0
+        gaps = span - _raw_from_punches(doc, shift)
+        return max(flat - max(gaps, 0.0), 0.0)
+
+    lunch_start, lunch_end = window
+    overlap = sum(
+        max((min(end, lunch_end) - max(start, lunch_start)).total_seconds(), 0.0)
+        for start, end in intervals
+    ) / 3600.0
+    return min(overlap, flat)
 
 
 def _override_native_standard_hours(doc, shift):
