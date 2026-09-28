@@ -1,0 +1,236 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:policy_name",
+ "creation": "2026-09-24 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "policy_name",
+  "enabled",
+  "column_break_head",
+  "company",
+  "priority",
+  "scope_section",
+  "branch",
+  "department",
+  "column_break_scope",
+  "shift_type",
+  "employee_grade",
+  "grace_section",
+  "late_grace_minutes",
+  "column_break_grace",
+  "early_grace_minutes",
+  "allowance_section",
+  "allowance_period",
+  "count_together",
+  "column_break_allowance",
+  "allowed_late_count",
+  "allowed_early_count",
+  "slab_section",
+  "deduction_slabs",
+  "priority_section",
+  "deduction_priority"
+ ],
+ "fields": [
+  {
+   "fieldname": "policy_name",
+   "fieldtype": "Data",
+   "label": "Policy Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Where more than one enabled policy matches an employee, the highest priority wins. Ties break on how many scope filters are set.",
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority"
+  },
+  {
+   "description": "Leave a filter empty to match every value. A policy only applies to an Attendance row that matches every filter that IS set.",
+   "fieldname": "scope_section",
+   "fieldtype": "Section Break",
+   "label": "Applies To"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "column_break_scope",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shift_type",
+   "fieldtype": "Link",
+   "label": "Shift Type",
+   "options": "Shift Type"
+  },
+  {
+   "fieldname": "employee_grade",
+   "fieldtype": "Link",
+   "label": "Employee Grade",
+   "options": "Employee Grade"
+  },
+  {
+   "fieldname": "grace_section",
+   "fieldtype": "Section Break",
+   "label": "Grace Time"
+  },
+  {
+   "default": "0",
+   "description": "Minutes after shift start that are not counted as late.",
+   "fieldname": "late_grace_minutes",
+   "fieldtype": "Int",
+   "label": "Late Coming Grace (Minutes)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_grace",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Minutes before shift end that are not counted as an early out.",
+   "fieldname": "early_grace_minutes",
+   "fieldtype": "Int",
+   "label": "Early Out Grace (Minutes)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "allowance_section",
+   "fieldtype": "Section Break",
+   "label": "Allowed Count"
+  },
+  {
+   "default": "Monthly",
+   "description": "Window the allowed count resets over.",
+   "fieldname": "allowance_period",
+   "fieldtype": "Select",
+   "label": "Allowance Period",
+   "options": "Monthly\nWeekly\nPayroll Period",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "On: one shared counter for late comings and early outs. Off: each has its own counter.",
+   "fieldname": "count_together",
+   "fieldtype": "Check",
+   "label": "Count Late Coming and Early Out Together"
+  },
+  {
+   "fieldname": "column_break_allowance",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Free late comings per period before any deduction starts.",
+   "fieldname": "allowed_late_count",
+   "fieldtype": "Int",
+   "label": "Allowed Late Coming Count",
+   "non_negative": 1
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:!doc.count_together",
+   "description": "Free early outs per period before any deduction starts.",
+   "fieldname": "allowed_early_count",
+   "fieldtype": "Int",
+   "label": "Allowed Early Out Count",
+   "non_negative": 1
+  },
+  {
+   "description": "How many minutes come off for a given lateness. Ranges must not overlap.",
+   "fieldname": "slab_section",
+   "fieldtype": "Section Break",
+   "label": "Deduction Range"
+  },
+  {
+   "fieldname": "deduction_slabs",
+   "fieldtype": "Table",
+   "label": "Deduction Slabs",
+   "options": "Attendance Deduction Slab"
+  },
+  {
+   "description": "The deduction is taken from these sources in order. A leave row is used only while the employee has a balance; whatever it cannot cover falls to the next row. The last row should be Working Hours, which always absorbs the remainder.",
+   "fieldname": "priority_section",
+   "fieldtype": "Section Break",
+   "label": "Deduction Priority"
+  },
+  {
+   "fieldname": "deduction_priority",
+   "fieldtype": "Table",
+   "label": "Deduct In This Order",
+   "options": "Attendance Deduction Source"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-24 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Deduction Policy",
+ "name": "Late Coming and Early Out Deduction Policy",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "HR User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-24 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "source",
+  "leave_type",
+  "minutes",
+  "leave_days",
+  "hours"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Deducted From",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "leave_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Leave Type",
+   "options": "Leave Type",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "minutes",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Minutes Covered",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "leave_days",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Leave Days",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "hours",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Working Hours",
+   "precision": "3",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-24 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Deduction Policy",
+ "name": "Attendance Deduction Entry",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

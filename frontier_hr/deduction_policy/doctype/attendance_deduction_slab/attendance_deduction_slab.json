@@ -1,0 +1,66 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-24 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "applies_to",
+  "from_minutes",
+  "to_minutes",
+  "deduct_minutes"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "default": "Both",
+   "fieldname": "applies_to",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Applies To",
+   "options": "Both\nLate Coming\nEarly Out",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Inclusive. Minutes late/early AFTER the grace period.",
+   "fieldname": "from_minutes",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "From (Minutes)",
+   "non_negative": 1
+  },
+  {
+   "columns": 2,
+   "description": "Inclusive. Leave 0 for no upper bound (the catch-all top slab).",
+   "fieldname": "to_minutes",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "To (Minutes)",
+   "non_negative": 1
+  },
+  {
+   "columns": 2,
+   "description": "Minutes to deduct when the lateness falls in this range.",
+   "fieldname": "deduct_minutes",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Deduct (Minutes)",
+   "non_negative": 1,
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-24 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Deduction Policy",
+ "name": "Attendance Deduction Slab",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

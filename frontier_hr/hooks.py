@@ -25,9 +25,21 @@ doc_events = {
 			"frontier_hr.overtime_extension.overrides.salary_slip.fetch_working_hours",
 		],
 	},
+	# apply_deduction MUST stay after apply_buffer_logic in both lists: it
+	# subtracts from the custom_base_hours that pass writes, and the base pass
+	# rebuilds that field from the punches on every save.
 	"Attendance": {
-		"before_save": "frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
-		"before_submit": "frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
+		"before_save": [
+			"frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
+			"frontier_hr.deduction_policy.overrides.attendance.apply_deduction",
+		],
+		"before_submit": [
+			"frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
+			"frontier_hr.deduction_policy.overrides.attendance.apply_deduction",
+		],
+		# Leave reserved during the save is only debited once the day is final.
+		"on_submit": "frontier_hr.deduction_policy.overrides.attendance.post_leave_ledger",
+		"on_cancel": "frontier_hr.deduction_policy.overrides.attendance.cancel_leave_ledger",
 	},
 	# hrms flips the Attendance day to On Leave with db_set, which runs no
 	# hooks — so the hours have to be recomputed from here. See the module
@@ -184,6 +196,16 @@ fixtures = [
 					"custom_payroll_basis",
 					# HR Settings — branch-wise birthday toggle (birthday_reminder/)
 					"custom_branch_wise_birthday_reminders",
+					# Attendance — late coming / early out deduction (deduction_policy/)
+					"custom_deduction_section",
+					"custom_deduction_policy",
+					"custom_late_coming_minutes",
+					"custom_early_out_minutes",
+					"custom_deduction_col_break",
+					"custom_deduction_minutes",
+					"custom_deducted_leave_days",
+					"custom_deducted_hours",
+					"custom_deduction_breakup",
 				],
 			],
 		],
