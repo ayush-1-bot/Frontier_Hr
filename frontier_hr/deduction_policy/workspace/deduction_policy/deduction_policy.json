@@ -1,0 +1,94 @@
+{
+ "app": "frontier_hr",
+ "charts": [],
+ "content": "[{\"id\":\"dpHeader01\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Late Coming and Early Out Deduction</b></span>\",\"col\":12}},{\"id\":\"dpShortcut1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Deduction Policy\",\"col\":3}},{\"id\":\"dpShortcut2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Deduction Report\",\"col\":3}},{\"id\":\"dpSpacer001\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"dpCard00001\",\"type\":\"card\",\"data\":{\"card_name\":\"Setup\",\"col\":4}},{\"id\":\"dpCard00002\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "creation": "2026-10-08 10:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "clock",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Deduction Policy",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Setup",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Late Coming and Early Out Deduction Policy",
+   "link_count": 0,
+   "link_to": "Late Coming and Early Out Deduction Policy",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Late Coming and Early Out Deduction",
+   "link_count": 0,
+   "link_to": "Late Coming and Early Out Deduction",
+   "link_type": "Report",
+   "dependencies": "Attendance",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Attendance",
+   "link_count": 0,
+   "link_to": "Attendance",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-10-08 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Deduction Policy",
+ "name": "Deduction Policy",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 20.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Deduction Policy",
+   "link_to": "Late Coming and Early Out Deduction Policy",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "Deduction Report",
+   "link_to": "Late Coming and Early Out Deduction",
+   "type": "Report",
+   "report_ref_doctype": "Attendance"
+  }
+ ],
+ "title": "Deduction Policy",
+ "type": "Workspace"
+}
