@@ -199,10 +199,13 @@ fixtures = [
 					# Attendance — late coming / early out deduction (deduction_policy/)
 					"custom_deduction_section",
 					"custom_deduction_policy",
+					"custom_late_coming_raw_minutes",
 					"custom_late_coming_minutes",
+					"custom_early_out_raw_minutes",
 					"custom_early_out_minutes",
 					"custom_deduction_col_break",
 					"custom_deduction_minutes",
+					"custom_deduction_report_only",
 					"custom_deducted_leave_days",
 					"custom_deducted_hours",
 					"custom_deduction_breakup",

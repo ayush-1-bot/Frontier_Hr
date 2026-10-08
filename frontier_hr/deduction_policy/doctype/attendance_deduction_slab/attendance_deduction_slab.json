@@ -24,7 +24,7 @@
   },
   {
    "columns": 2,
-   "description": "Inclusive. Minutes late/early AFTER the grace period.",
+   "description": "Inclusive. Minutes late after the grace.",
    "fieldname": "from_minutes",
    "fieldtype": "Int",
    "in_list_view": 1,
@@ -33,7 +33,7 @@
   },
   {
    "columns": 2,
-   "description": "Inclusive. Leave 0 for no upper bound (the catch-all top slab).",
+   "description": "Inclusive. 0 = no upper bound (top range).",
    "fieldname": "to_minutes",
    "fieldtype": "Int",
    "in_list_view": 1,
@@ -42,7 +42,7 @@
   },
   {
    "columns": 2,
-   "description": "Minutes to deduct when the lateness falls in this range.",
+   "description": "Minutes deducted for this range.",
    "fieldname": "deduct_minutes",
    "fieldtype": "Int",
    "in_list_view": 1,

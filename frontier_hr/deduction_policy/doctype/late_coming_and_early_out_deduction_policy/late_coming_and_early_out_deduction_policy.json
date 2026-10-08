@@ -9,6 +9,7 @@
  "field_order": [
   "policy_name",
   "enabled",
+  "report_only",
   "column_break_head",
   "company",
   "priority",
@@ -29,6 +30,7 @@
   "allowed_late_count",
   "allowed_early_count",
   "slab_section",
+  "deduction_basis",
   "deduction_slabs",
   "priority_section",
   "deduction_priority"
@@ -48,6 +50,13 @@
    "label": "Enabled"
   },
   {
+   "default": "0",
+   "fieldname": "report_only",
+   "fieldtype": "Check",
+   "label": "Report Only, Do Not Deduct",
+   "description": "Record what would be deducted, but take nothing from pay or leave."
+  },
+  {
    "fieldname": "column_break_head",
    "fieldtype": "Column Break"
   },
@@ -60,13 +69,13 @@
   },
   {
    "default": "0",
-   "description": "Where more than one enabled policy matches an employee, the highest priority wins. Ties break on how many scope filters are set.",
+   "description": "Highest wins when several policies match. Ties go to the one with more filters set.",
    "fieldname": "priority",
    "fieldtype": "Int",
    "label": "Priority"
   },
   {
-   "description": "Leave a filter empty to match every value. A policy only applies to an Attendance row that matches every filter that IS set.",
+   "description": "Empty filter = matches all.",
    "fieldname": "scope_section",
    "fieldtype": "Section Break",
    "label": "Applies To"
@@ -106,7 +115,7 @@
   },
   {
    "default": "0",
-   "description": "Minutes after shift start that are not counted as late.",
+   "description": "Late minutes not counted, while allowed times remain.",
    "fieldname": "late_grace_minutes",
    "fieldtype": "Int",
    "label": "Late Coming Grace (Minutes)",
@@ -118,7 +127,7 @@
   },
   {
    "default": "0",
-   "description": "Minutes before shift end that are not counted as an early out.",
+   "description": "Early minutes not counted, while allowed times remain.",
    "fieldname": "early_grace_minutes",
    "fieldtype": "Int",
    "label": "Early Out Grace (Minutes)",
@@ -127,11 +136,11 @@
   {
    "fieldname": "allowance_section",
    "fieldtype": "Section Break",
-   "label": "Allowed Count"
+   "label": "Allowed Times (Grace Usage)"
   },
   {
    "default": "Monthly",
-   "description": "Window the allowed count resets over.",
+   "description": "When the allowed times reset.",
    "fieldname": "allowance_period",
    "fieldtype": "Select",
    "label": "Allowance Period",
@@ -140,7 +149,7 @@
   },
   {
    "default": "0",
-   "description": "On: one shared counter for late comings and early outs. Off: each has its own counter.",
+   "description": "On: late and early share one pool, taken from the late field.",
    "fieldname": "count_together",
    "fieldtype": "Check",
    "label": "Count Late Coming and Early Out Together"
@@ -151,35 +160,46 @@
   },
   {
    "default": "0",
-   "description": "Free late comings per period before any deduction starts.",
+   "description": "Times per period a late arrival inside the grace is forgiven. Once used up, the grace stops and even 1 minute is deducted. Days beyond the grace are deducted at once and use none. 0 = never runs out.",
    "fieldname": "allowed_late_count",
    "fieldtype": "Int",
-   "label": "Allowed Late Coming Count",
+   "label": "Allowed Late Times (Within Grace)",
    "non_negative": 1
   },
   {
    "default": "0",
    "depends_on": "eval:!doc.count_together",
-   "description": "Free early outs per period before any deduction starts.",
+   "description": "Same, for early outs. 0 = never runs out.",
    "fieldname": "allowed_early_count",
    "fieldtype": "Int",
-   "label": "Allowed Early Out Count",
+   "label": "Allowed Early Out Times (Within Grace)",
    "non_negative": 1
   },
   {
-   "description": "How many minutes come off for a given lateness. Ranges must not overlap.",
+   "description": "How much comes off for a given lateness.",
    "fieldname": "slab_section",
    "fieldtype": "Section Break",
-   "label": "Deduction Range"
+   "label": "Deduction Amount"
+  },
+  {
+   "default": "Deduction Range",
+   "description": "Range: deduct what the table below says. Actual: deduct exactly the minutes late or early.",
+   "fieldname": "deduction_basis",
+   "fieldtype": "Select",
+   "label": "Deduct",
+   "options": "Deduction Range\nActual Late Minutes",
+   "reqd": 1
   },
   {
    "fieldname": "deduction_slabs",
    "fieldtype": "Table",
    "label": "Deduction Slabs",
-   "options": "Attendance Deduction Slab"
+   "options": "Attendance Deduction Slab",
+   "depends_on": "eval:doc.deduction_basis == \"Deduction Range\"",
+   "mandatory_depends_on": "eval:doc.deduction_basis == \"Deduction Range\""
   },
   {
-   "description": "The deduction is taken from these sources in order. A leave row is used only while the employee has a balance; whatever it cannot cover falls to the next row. The last row should be Working Hours, which always absorbs the remainder.",
+   "description": "Taken from these sources in order. A leave row is used while the balance lasts, the rest falls through. End with Working Hours.",
    "fieldname": "priority_section",
    "fieldtype": "Section Break",
    "label": "Deduction Priority"
@@ -193,7 +213,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-24 10:00:00.000000",
+ "modified": "2026-09-29 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Deduction Policy",
  "name": "Late Coming and Early Out Deduction Policy",

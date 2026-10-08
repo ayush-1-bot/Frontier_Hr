@@ -6,6 +6,7 @@ Rolls everything back, so it is safe against a site with real data.
 """
 
 import frappe
+from frappe.utils import flt
 
 from frontier_hr.deduction_policy.overrides.attendance import (
 	_early_minutes,
@@ -18,6 +19,31 @@ from frontier_hr.deduction_policy.overrides.attendance import (
 POLICY = "Late Coming and Early Out Deduction Policy"
 NAME = "_Test Deduction Policy"
 SHIFT = "day"
+
+
+def _test_employee():
+	"""A throwaway employee of this run's own.
+
+	Never a seeded one: a site carries real Leave Allocations, and a second
+	allocation overlapping the same period is refused, so the leave checks
+	would fail on whatever balances happened to be there. Rolled back with
+	everything else.
+	"""
+	shift = frappe.db.get_value("Shift Type", SHIFT, ["name", "holiday_list"], as_dict=True)
+	company = frappe.db.get_value("Company", {}, "name")
+	doc = frappe.get_doc({
+		"doctype": "Employee",
+		"first_name": "_Deduction",
+		"last_name": "Testcase",
+		"gender": frappe.db.get_value("Gender", {}, "name"),
+		"date_of_birth": "1995-01-01",
+		"date_of_joining": "2025-01-01",
+		"company": company,
+		"status": "Active",
+		"default_shift": SHIFT,
+		"holiday_list": shift.holiday_list,
+	}).insert(ignore_permissions=True)
+	return doc.name, company
 
 
 def _drop_policy():
@@ -118,9 +144,7 @@ def check_allowance_and_walk():
 	walk, driven through a real Attendance save so the hook order is exercised
 	too. Dates sit in a clean future month so nothing collides with real rows.
 	"""
-	employee = frappe.db.get_value("Employee", {"employee_number": "_seed_deduction_demo"}, "name")
-	assert employee, "run _seed_demo.run first"
-	company = frappe.db.get_value("Employee", employee, "company")
+	employee, company = _test_employee()
 
 	_drop_policy()
 	policy = frappe.get_doc({
@@ -128,6 +152,9 @@ def check_allowance_and_walk():
 		"policy_name": NAME,
 		"company": company,
 		"shift_type": SHIFT,
+		# Sites carry real policies too; outrank them so the checks below are
+		# testing this policy rather than whatever else happens to match.
+		"priority": 999,
 		"late_grace_minutes": 10,
 		"early_grace_minutes": 5,
 		"allowance_period": "Monthly",
@@ -141,54 +168,64 @@ def check_allowance_and_walk():
 		"deduction_priority": [{"source": "Working Hours"}],
 	}).insert(ignore_permissions=True)
 
-	# 09:50 = 20 late, 10 grace -> 10 past grace -> the 1-30 range -> 30 min off.
-	days = ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"]
-	made = []
-	for date in days:
-		doc = frappe.get_doc({
-			"doctype": "Attendance",
-			"employee": employee,
-			"attendance_date": date,
-			"status": "Present",
-			"company": company,
-			"shift": SHIFT,
-			"in_time": f"{date} 09:50:00",
-			"out_time": f"{date} 18:30:00",
-			"working_hours": 8.5,
+	def attendance(date, in_time, out_time="18:30:00", hours=8.5):
+		return frappe.get_doc({
+			"doctype": "Attendance", "employee": employee, "attendance_date": date,
+			"status": "Present", "company": company, "shift": SHIFT,
+			"in_time": f"{date} {in_time}", "out_time": f"{date} {out_time}",
+			"working_hours": hours,
 		}).insert(ignore_permissions=True)
-		made.append(doc)
 
-	for doc in made:
-		assert doc.custom_deduction_policy == NAME, f"{doc.attendance_date}: policy not matched"
-		assert doc.custom_late_coming_minutes == 10, f"{doc.attendance_date}: {doc.custom_late_coming_minutes}"
+	# Shift starts 09:30, grace 10 minutes, 2 allowed times.
+	# 09:38 is 8 late: inside the grace, so it is forgiven and uses a time up.
+	d1 = attendance("2026-10-05", "09:38:00")
+	d2 = attendance("2026-10-06", "09:35:00")
+	assert (d1.custom_late_coming_raw_minutes, d1.custom_late_coming_minutes) == (8, 0)
+	assert (d2.custom_late_coming_raw_minutes, d2.custom_late_coming_minutes) == (5, 0)
+	assert d1.custom_deduction_minutes == 0 and d2.custom_deduction_minutes == 0
 
-	# First two are free (allowed_late_count = 2), the rest are charged.
-	assert made[0].custom_deduction_minutes == 0, made[0].custom_deduction_minutes
-	assert made[1].custom_deduction_minutes == 0, made[1].custom_deduction_minutes
-	assert made[2].custom_deduction_minutes == 30, made[2].custom_deduction_minutes
-	assert made[3].custom_deduction_minutes == 30, made[3].custom_deduction_minutes
+	# Third time inside the grace: the allowed times are gone, so the grace no
+	# longer applies and even 3 minutes late is counted and charged.
+	d3 = attendance("2026-10-07", "09:33:00")
+	assert d3.custom_late_coming_raw_minutes == 3, d3.custom_late_coming_raw_minutes
+	assert d3.custom_late_coming_minutes == 3, d3.custom_late_coming_minutes
+	assert d3.custom_deduction_minutes == 30, d3.custom_deduction_minutes
 
-	# The charged days take the 30 minutes off the payable base, not off the
-	# measured working_hours.
-	assert made[3].custom_deducted_hours == 0.5, made[3].custom_deducted_hours
-	assert made[3].working_hours == 8.5, made[3].working_hours
-	breakup = made[3].custom_deduction_breakup
-	assert len(breakup) == 1 and breakup[0].source == "Working Hours", breakup
-	assert breakup[0].minutes == 30, breakup[0].minutes
+	# Even one minute now counts.
+	d4 = attendance("2026-10-08", "09:31:00")
+	assert d4.custom_late_coming_minutes == 1, d4.custom_late_coming_minutes
+	assert d4.custom_deduction_minutes == 30, d4.custom_deduction_minutes
 
-	# Re-saving must not deduct a second time.
-	before = made[3].custom_base_hours
-	made[3].save(ignore_permissions=True)
-	assert made[3].custom_base_hours == before, (before, made[3].custom_base_hours)
-	assert made[3].custom_deducted_hours == 0.5, made[3].custom_deducted_hours
+	# The policy is stamped on every row it judged.
+	for doc in (d1, d2, d3, d4):
+		assert doc.custom_deduction_policy == NAME, doc.attendance_date
 
-	# A policy scoped to another shift must not match this row.
-	policy.shift_type = "testing" if frappe.db.exists("Shift Type", "testing") else None
-	if policy.shift_type:
+	# Re-saving must not deduct twice.
+	before = d4.custom_base_hours
+	d4.save(ignore_permissions=True)
+	assert d4.custom_base_hours == before, (before, d4.custom_base_hours)
+
+	made = [d1, d2, d3, d4]
+
+	# A day BEYOND the grace is charged at once and never uses a time up. Fresh
+	# month, so the quota is untouched.
+	big = attendance("2026-11-09", "10:25:00")
+	assert big.custom_late_coming_raw_minutes == 55, big.custom_late_coming_raw_minutes
+	assert big.custom_late_coming_minutes == 45, big.custom_late_coming_minutes  # grace still shaves it
+	assert big.custom_deduction_minutes == 60, big.custom_deduction_minutes
+	# ...and the grace is still available afterwards, so a small day is forgiven.
+	small = attendance("2026-11-10", "09:36:00")
+	assert small.custom_late_coming_minutes == 0, small.custom_late_coming_minutes
+	assert small.custom_deduction_minutes == 0, small.custom_deduction_minutes
+
+	# Re-scoped to another shift, this policy must stop matching the row. Any
+	# real policy on the site may then take over, which is correct behaviour —
+	# so the check is that THIS policy stepped aside, not that none matched.
+	if frappe.db.exists("Shift Type", "testing"):
+		policy.shift_type = "testing"
 		policy.save(ignore_permissions=True)
 		made[3].save(ignore_permissions=True)
-		assert not made[3].custom_deduction_policy, made[3].custom_deduction_policy
-		assert made[3].custom_deduction_minutes == 0, made[3].custom_deduction_minutes
+		assert made[3].custom_deduction_policy != NAME, made[3].custom_deduction_policy
 
 
 def _leave_type(name, **kwargs):
@@ -222,8 +259,7 @@ def check_leave_walk():
 	"""Step 4 — a leave row is drained only as far as the balance stretches and
 	the rest falls to the next row, then the debit reaches the ledger on submit
 	and comes back on cancel."""
-	employee = frappe.db.get_value("Employee", {"employee_number": "_seed_deduction_demo"}, "name")
-	company = frappe.db.get_value("Employee", employee, "company")
+	employee, company = _test_employee()
 
 	short = _leave_type("Short Leave", max_leaves_allowed=10)
 	casual = _leave_type("Casual Leave")
@@ -239,6 +275,7 @@ def check_leave_walk():
 		"policy_name": NAME,
 		"company": company,
 		"shift_type": SHIFT,
+		"priority": 999,
 		"late_grace_minutes": 10,
 		"allowance_period": "Monthly",
 		"allowed_late_count": 0,
@@ -309,10 +346,123 @@ def check_leave_walk():
 	assert _balance(employee, short, date) == before, _balance(employee, short, date)
 
 
+def check_report_only():
+	"""Report Only works everything out but costs the employee nothing."""
+	employee, company = _test_employee()
+	short = _leave_type("Short Leave", max_leaves_allowed=10)
+	_allocate(employee, short, 1, company)
+
+	_drop_policy()
+	frappe.get_doc({
+		"doctype": POLICY, "policy_name": NAME, "company": company, "shift_type": SHIFT,
+		"priority": 999, "report_only": 1,
+		"late_grace_minutes": 10, "allowance_period": "Monthly", "allowed_late_count": 0,
+		"deduction_slabs": [
+			{"applies_to": "Both", "from_minutes": 1, "to_minutes": 0, "deduct_minutes": 120},
+		],
+		"deduction_priority": [
+			{"source": "Leave", "leave_type": short, "hours_per_unit": 2, "days_per_unit": 0.5},
+			{"source": "Working Hours"},
+		],
+	}).insert(ignore_permissions=True)
+
+	date = "2026-12-07"
+	doc = frappe.get_doc({
+		"doctype": "Attendance", "employee": employee, "attendance_date": date,
+		"status": "Present", "company": company, "shift": SHIFT,
+		"in_time": f"{date} 11:00:00", "out_time": f"{date} 18:30:00", "working_hours": 7.0,
+	}).insert(ignore_permissions=True)
+
+	# The figures are all worked out and recorded...
+	assert doc.custom_deduction_report_only == 1
+	assert doc.custom_deduction_minutes == 120, doc.custom_deduction_minutes
+	assert doc.custom_deducted_leave_days == 0.5, doc.custom_deducted_leave_days
+	assert len(doc.custom_deduction_breakup) == 1, doc.custom_deduction_breakup
+
+	# ...but the payable hours are untouched.
+	base_before = flt(doc.custom_base_hours)
+	balance_before = _balance(employee, short, date)
+
+	doc.submit()
+	assert flt(doc.custom_base_hours) == base_before, (base_before, doc.custom_base_hours)
+	assert frappe.db.count("Leave Ledger Entry", {
+		"transaction_type": "Attendance", "transaction_name": doc.name, "docstatus": 1
+	}) == 0, "report-only debited leave"
+	assert _balance(employee, short, date) == balance_before
+
+	# Switching it off makes the same day bite.
+	policy = frappe.get_doc(POLICY, NAME)
+	policy.report_only = 0
+	policy.save(ignore_permissions=True)
+
+	date2 = "2026-12-08"
+	real = frappe.get_doc({
+		"doctype": "Attendance", "employee": employee, "attendance_date": date2,
+		"status": "Present", "company": company, "shift": SHIFT,
+		"in_time": f"{date2} 11:00:00", "out_time": f"{date2} 18:30:00", "working_hours": 7.0,
+	}).insert(ignore_permissions=True)
+	assert real.custom_deduction_report_only == 0
+	assert real.custom_deducted_leave_days == 0.5, real.custom_deducted_leave_days
+	real.submit()
+	assert _balance(employee, short, date2) == balance_before - 0.5, _balance(employee, short, date2)
+
+
+def check_actual_minutes():
+	"""Actual Late Minutes deducts exactly what was lost, ignoring the ranges."""
+	employee, company = _test_employee()
+
+	_drop_policy()
+	frappe.get_doc({
+		"doctype": POLICY, "policy_name": NAME, "company": company, "shift_type": SHIFT,
+		"priority": 999, "deduction_basis": "Actual Late Minutes",
+		"late_grace_minutes": 10, "early_grace_minutes": 5,
+		"allowance_period": "Monthly", "allowed_late_count": 0,
+		# Deliberately left in place: the ranges must be ignored, not applied.
+		"deduction_slabs": [
+			{"applies_to": "Both", "from_minutes": 1, "to_minutes": 0, "deduct_minutes": 999},
+		],
+		"deduction_priority": [{"source": "Working Hours"}],
+	}).insert(ignore_permissions=True)
+
+	def day(date, in_time, out_time="18:30:00"):
+		return frappe.get_doc({
+			"doctype": "Attendance", "employee": employee, "attendance_date": date,
+			"status": "Present", "company": company, "shift": SHIFT,
+			"in_time": f"{date} {in_time}", "out_time": f"{date} {out_time}",
+			"working_hours": 8.0,
+		}).insert(ignore_permissions=True)
+
+	# 09:53 is 23 late, less 10 grace = 13 counted -> 13 deducted, not 999.
+	d1 = day("2027-01-05", "09:53:00")
+	assert d1.custom_late_coming_minutes == 13, d1.custom_late_coming_minutes
+	assert d1.custom_deduction_minutes == 13, d1.custom_deduction_minutes
+	assert d1.custom_deducted_hours == flt(13 / 60.0, 3), d1.custom_deducted_hours
+
+	# Late AND early on one day: both counted, added together.
+	d2 = day("2027-01-06", "09:45:00", "18:00:00")  # 15 late -> 5, 30 early -> 25
+	assert (d2.custom_late_coming_minutes, d2.custom_early_out_minutes) == (5, 25), (
+		d2.custom_late_coming_minutes, d2.custom_early_out_minutes
+	)
+	assert d2.custom_deduction_minutes == 30, d2.custom_deduction_minutes
+
+	# One minute late costs one minute, where a range would have charged a block.
+	d3 = day("2027-01-07", "09:41:00")
+	assert d3.custom_deduction_minutes == 1, d3.custom_deduction_minutes
+
+	# Switching back to the ranges makes the same lateness cost the block again.
+	policy = frappe.get_doc(POLICY, NAME)
+	policy.deduction_basis = "Deduction Range"
+	policy.save(ignore_permissions=True)
+	d4 = day("2027-01-08", "09:41:00")
+	assert d4.custom_deduction_minutes == 999, d4.custom_deduction_minutes
+
+
 def run():
 	check_measurement()
 	check_allowance_and_walk()
 	check_leave_walk()
+	check_report_only()
+	check_actual_minutes()
 	frappe.db.rollback()
 
 	_drop_policy()
@@ -367,4 +517,4 @@ def run():
 	])), "a zero conversion rate was accepted"
 
 	frappe.db.rollback()
-	print("deduction policy self-check OK (measurement + ranges + validators)")
+	print("deduction policy self-check OK (measurement, ranges, actual minutes, validators, grace quota, leave walk, report only)")

@@ -13,9 +13,13 @@ class LateComingandEarlyOutDeductionPolicy(Document):
 		self.validate_priority()
 
 	def validate_slabs(self):
-		"""Overlapping or reversed ranges would make the deduction depend on row
-		order rather than on how late the employee was, so they are rejected at
-		save rather than silently resolved at run time."""
+		"""Reject overlapping or reversed ranges: they would make the deduction
+		depend on row order rather than on how late the employee was."""
+		# Ignored when the deduction is the actual minutes, so a stale table left
+		# from the other mode must not block the save.
+		if self.deduction_basis == "Actual Late Minutes":
+			return
+
 		for row in self.deduction_slabs:
 			if row.to_minutes and row.to_minutes < row.from_minutes:
 				frappe.throw(
