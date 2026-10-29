@@ -106,6 +106,11 @@ scheduler_events = {
 # after_migrate rather than from patches.txt on purpose: fixture import happens
 # during every migrate and resets those columns, and a patches.txt entry would
 # run once and then never again. All four are idempotent.
+# Module Defs must exist BEFORE the doctypes sync, not after: DocType.module is
+# a Link to Module Def, so a module added after the app was installed would see
+# every one of its doctypes fail while its custom fields installed normally.
+before_migrate = ["frontier_hr.install.ensure_module_defs"]
+
 after_migrate = [
 	"frontier_hr.patches.fix_overtime_type_field_order.execute",
 	"frontier_hr.patches.fix_shift_type_field_order.execute",
