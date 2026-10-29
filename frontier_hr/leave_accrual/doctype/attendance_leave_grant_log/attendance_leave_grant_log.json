@@ -1,0 +1,163 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-27 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "grant_date",
+  "column_break_head",
+  "policy",
+  "leave_type",
+  "leaves_granted",
+  "detail_section",
+  "counter_before",
+  "counter_after",
+  "column_break_detail",
+  "triggered_by",
+  "leave_allocation",
+  "reversed"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grant_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Grant Date",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "policy",
+   "fieldtype": "Link",
+   "label": "Policy",
+   "options": "Attendance Leave Accrual Policy"
+  },
+  {
+   "fieldname": "leave_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Leave Type",
+   "options": "Leave Type"
+  },
+  {
+   "fieldname": "leaves_granted",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Leaves Granted",
+   "precision": "3"
+  },
+  {
+   "fieldname": "detail_section",
+   "fieldtype": "Section Break",
+   "label": "Counter"
+  },
+  {
+   "fieldname": "counter_before",
+   "fieldtype": "Float",
+   "label": "Counter Before",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "counter_after",
+   "fieldtype": "Float",
+   "label": "Counter After",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_detail",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The Attendance whose credit pushed the counter over the line.",
+   "fieldname": "triggered_by",
+   "fieldtype": "Link",
+   "label": "Triggered By",
+   "options": "Attendance",
+   "read_only": 1
+  },
+  {
+   "fieldname": "leave_allocation",
+   "fieldtype": "Link",
+   "label": "Leave Allocation",
+   "options": "Leave Allocation",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "The Attendance that earned this was cancelled and the grant was taken back.",
+   "fieldname": "reversed",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Reversed",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-27 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Leave Accrual",
+ "name": "Attendance Leave Grant Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "HR User"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

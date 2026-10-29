@@ -419,12 +419,36 @@ def _take_from_working_hours(doc, remaining):
 
 
 def _leave_balance(doc, leave_type):
-	"""Balance on the attendance date, straight off the ledger.
+	"""Balance left on the attendance date, straight off the ledger.
+
+	Sums the whole allocation period up to and including this day, NOT just the
+	rows whose own date range covers it. Our debits are single-day
+	(from_date = to_date = the attendance date), so a "date BETWEEN from_date
+	AND to_date" test matches none of the earlier ones and every day would read
+	the full untouched allocation and debit it again.
 
 	Not hrms's get_leave_balance_on: that runs a role check that would throw for
 	non leave-approvers on every save. This row's own entries are excluded, so a
 	re-save reads the balance it started from.
 	"""
+	date = getdate(doc.attendance_date)
+
+	period = frappe.db.sql(
+		"""
+		SELECT MIN(from_date) AS start_date FROM `tabLeave Ledger Entry`
+		WHERE docstatus = 1
+		  AND employee = %(employee)s
+		  AND leave_type = %(leave_type)s
+		  AND is_expired = 0
+		  AND transaction_type = 'Leave Allocation'
+		  AND %(date)s BETWEEN from_date AND to_date
+		""",
+		{"employee": doc.employee, "leave_type": leave_type, "date": date},
+		as_dict=True,
+	)
+	if not period or not period[0].start_date:
+		return 0.0  # nothing allocated covers this day
+
 	balance = frappe.db.sql(
 		"""
 		SELECT SUM(leaves) FROM `tabLeave Ledger Entry`
@@ -432,13 +456,14 @@ def _leave_balance(doc, leave_type):
 		  AND employee = %(employee)s
 		  AND leave_type = %(leave_type)s
 		  AND is_expired = 0
-		  AND %(date)s BETWEEN from_date AND to_date
+		  AND from_date BETWEEN %(start_date)s AND %(date)s
 		  AND NOT (transaction_type = 'Attendance' AND transaction_name = %(name)s)
 		""",
 		{
 			"employee": doc.employee,
 			"leave_type": leave_type,
-			"date": getdate(doc.attendance_date),
+			"start_date": period[0].start_date,
+			"date": date,
 			"name": doc.get("name") or "",
 		},
 	)[0][0]

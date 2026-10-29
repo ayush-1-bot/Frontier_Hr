@@ -457,12 +457,65 @@ def check_actual_minutes():
 	assert d4.custom_deduction_minutes == 999, d4.custom_deduction_minutes
 
 
+def check_balance_drains_across_days():
+	"""A later day must see what earlier days already debited.
+
+	Our ledger rows are single-day, so a balance read that only matched rows
+	whose own range covered the date saw none of them: every day re-read the
+	full allocation and debited it again, taking far more leave than existed.
+	"""
+	employee, company = _test_employee()
+	short = _leave_type("Short Leave", max_leaves_allowed=10)
+	_allocate(employee, short, 1.0, company)  # 1 day = 4 hours at 2h/0.5d
+
+	_drop_policy()
+	frappe.get_doc({
+		"doctype": POLICY, "policy_name": NAME, "company": company, "shift_type": SHIFT,
+		"priority": 999, "late_grace_minutes": 0,
+		"allowance_period": "Monthly", "allowed_late_count": 0,
+		"deduction_slabs": [
+			{"applies_to": "Both", "from_minutes": 1, "to_minutes": 0, "deduct_minutes": 120},
+		],
+		# No Working Hours row: whatever leave cannot cover is simply forgiven,
+		# which makes the leave arithmetic the only thing under test.
+		"deduction_priority": [
+			{"source": "Leave", "leave_type": short, "hours_per_unit": 2, "days_per_unit": 0.5},
+		],
+	}).insert(ignore_permissions=True)
+
+	# 120 min = 2 h = one unit = 0.5 day per day. A 1.0 day balance covers
+	# exactly two days, and the third must get nothing.
+	taken = []
+	for date in ("2026-11-16", "2026-11-17", "2026-11-18"):
+		doc = frappe.get_doc({
+			"doctype": "Attendance", "employee": employee, "attendance_date": date,
+			"status": "Present", "company": company, "shift": SHIFT,
+			"in_time": f"{date} 11:30:00", "out_time": f"{date} 18:30:00",
+			"working_hours": 7.0,
+		}).insert(ignore_permissions=True)
+		doc.submit()
+		taken.append(flt(doc.custom_deducted_leave_days))
+
+	assert taken == [0.5, 0.5, 0.0], taken
+
+	debited = frappe.db.sql(
+		"""SELECT SUM(leaves) FROM `tabLeave Ledger Entry`
+		   WHERE docstatus = 1 AND employee = %s AND leave_type = %s
+		     AND transaction_type = 'Attendance'""",
+		(employee, short),
+	)[0][0]
+	# Never more than was ever allocated.
+	assert flt(debited) == -1.0, debited
+	assert _balance(employee, short, "2026-11-18") == 0.0, _balance(employee, short, "2026-11-18")
+
+
 def run():
 	check_measurement()
 	check_allowance_and_walk()
 	check_leave_walk()
 	check_report_only()
 	check_actual_minutes()
+	check_balance_drains_across_days()
 	frappe.db.rollback()
 
 	_drop_policy()
@@ -517,4 +570,4 @@ def run():
 	])), "a zero conversion rate was accepted"
 
 	frappe.db.rollback()
-	print("deduction policy self-check OK (measurement, ranges, actual minutes, validators, grace quota, leave walk, report only)")
+	print("deduction policy self-check OK (measurement, ranges, actual minutes, validators, grace quota, leave walk, balance drain, report only)")

@@ -38,8 +38,16 @@ doc_events = {
 			"frontier_hr.deduction_policy.overrides.attendance.apply_deduction",
 		],
 		# Leave reserved during the save is only debited once the day is final.
-		"on_submit": "frontier_hr.deduction_policy.overrides.attendance.post_leave_ledger",
-		"on_cancel": "frontier_hr.deduction_policy.overrides.attendance.cancel_leave_ledger",
+		# Accrual runs after the deduction so a day cannot earn credit toward a
+		# leave and pay for its own lateness out of that same grant.
+		"on_submit": [
+			"frontier_hr.deduction_policy.overrides.attendance.post_leave_ledger",
+			"frontier_hr.leave_accrual.overrides.attendance.accrue_on_submit",
+		],
+		"on_cancel": [
+			"frontier_hr.deduction_policy.overrides.attendance.cancel_leave_ledger",
+			"frontier_hr.leave_accrual.overrides.attendance.reverse_on_cancel",
+		],
 	},
 	# hrms flips the Attendance day to On Leave with db_set, which runs no
 	# hooks — so the hours have to be recomputed from here. See the module
@@ -209,6 +217,14 @@ fixtures = [
 					"custom_deducted_leave_days",
 					"custom_deducted_hours",
 					"custom_deduction_breakup",
+					# Attendance / Employee — leave accrual (leave_accrual/)
+					"custom_accrual_credit_days",
+					"custom_attendance_accrual_section",
+					"custom_attendance_credit_days",
+					"custom_attendance_credit_period",
+					"custom_accrual_col_break",
+					"custom_attendance_leaves_earned",
+					"custom_attendance_accrual_policy",
 				],
 			],
 		],

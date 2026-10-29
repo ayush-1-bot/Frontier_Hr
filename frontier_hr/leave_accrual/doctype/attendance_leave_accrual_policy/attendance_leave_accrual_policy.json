@@ -1,0 +1,236 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:policy_name",
+ "creation": "2026-10-27 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "policy_name",
+  "enabled",
+  "column_break_head",
+  "company",
+  "priority",
+  "scope_section",
+  "branch",
+  "department",
+  "column_break_scope",
+  "shift_type",
+  "employee_grade",
+  "credit_section",
+  "credits",
+  "earn_section",
+  "days_required",
+  "leaves_granted",
+  "column_break_earn",
+  "leave_type",
+  "max_leaves_per_period",
+  "reset_section",
+  "reset_period",
+  "carry_forward_remainder",
+  "column_break_reset",
+  "carry_forward_counter"
+ ],
+ "fields": [
+  {
+   "fieldname": "policy_name",
+   "fieldtype": "Data",
+   "label": "Policy Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Highest wins when several policies match. Ties go to the one with more filters set.",
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority"
+  },
+  {
+   "description": "Empty filter = matches all.",
+   "fieldname": "scope_section",
+   "fieldtype": "Section Break",
+   "label": "Applies To"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "column_break_scope",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shift_type",
+   "fieldtype": "Link",
+   "label": "Shift Type",
+   "options": "Shift Type"
+  },
+  {
+   "fieldname": "employee_grade",
+   "fieldtype": "Link",
+   "label": "Employee Grade",
+   "options": "Employee Grade"
+  },
+  {
+   "description": "How much each attendance status adds to the employee's counter. A status not listed earns nothing.",
+   "fieldname": "credit_section",
+   "fieldtype": "Section Break",
+   "label": "What Earns Credit"
+  },
+  {
+   "fieldname": "credits",
+   "fieldtype": "Table",
+   "label": "Credit per Attendance Status",
+   "options": "Attendance Accrual Credit",
+   "reqd": 1
+  },
+  {
+   "fieldname": "earn_section",
+   "fieldtype": "Section Break",
+   "label": "Earning a Leave"
+  },
+  {
+   "default": "20",
+   "description": "Counter needed for one grant. At 20, a 20.5 counter grants once and keeps 0.5.",
+   "fieldname": "days_required",
+   "fieldtype": "Float",
+   "label": "Days Required per Leave",
+   "non_negative": 1,
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "Leave days granted each time the counter is reached.",
+   "fieldname": "leaves_granted",
+   "fieldtype": "Float",
+   "label": "Leaves Granted",
+   "non_negative": 1,
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_earn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Leave the grant is added to. The employee's allocation for this type is topped up.",
+   "fieldname": "leave_type",
+   "fieldtype": "Link",
+   "label": "Leave Type",
+   "options": "Leave Type",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Cap on leaves granted within one reset period. 0 = no cap.",
+   "fieldname": "max_leaves_per_period",
+   "fieldtype": "Float",
+   "label": "Maximum Leaves per Period",
+   "non_negative": 1,
+   "precision": "3"
+  },
+  {
+   "fieldname": "reset_section",
+   "fieldtype": "Section Break",
+   "label": "Counter Reset"
+  },
+  {
+   "default": "Never",
+   "description": "When the counter starts again from zero.",
+   "fieldname": "reset_period",
+   "fieldtype": "Select",
+   "label": "Reset Counter",
+   "options": "Never\nMonthly\nYearly",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "On: a 20.5 counter grants once and keeps the 0.5. Off: the remainder is dropped.",
+   "fieldname": "carry_forward_remainder",
+   "fieldtype": "Check",
+   "label": "Carry Forward the Remainder"
+  },
+  {
+   "fieldname": "column_break_reset",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.reset_period != \"Never\"",
+   "description": "On: the counter survives the reset period. Off: unearned days are lost at period end.",
+   "fieldname": "carry_forward_counter",
+   "fieldtype": "Check",
+   "label": "Carry Counter to Next Period"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-27 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Leave Accrual",
+ "name": "Attendance Leave Accrual Policy",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "HR User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

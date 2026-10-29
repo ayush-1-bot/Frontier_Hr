@@ -62,6 +62,19 @@ EFFECTIVE HOURS
       custom_apply_ot_buffers (default on) switches the grace period off in
       either model: any time outside the window, or past N, then counts.
 
+      PUBLIC HOLIDAY   (Overtime Type.applicable_for_public_holiday)
+          A day worked on a Holiday List date that is NOT the weekly off is
+          overtime from the first minute: there is no shift to complete and no
+          threshold to clear, so the whole effective worked figure becomes OT
+          and base is left at zero. The holiday itself is already paid in full
+          through Salary Slip.custom_holiday_hours, so paying the worked hours
+          as base as well would pay the day twice.
+
+          The weekly off (Sunday) is deliberately excluded — it keeps the
+          normal model, and its own treatment lives in the Sunday deduction
+          module. Switch the whole behaviour with the native
+          `applicable_for_public_holiday` check on the Overtime Type.
+
 Both OT models then apply the daily OT cap
 (Overtime Type.maximum_overtime_hours_allowed).
 
@@ -626,6 +639,44 @@ def _clear_ot_fields(doc):
     doc.custom_ot_status = ""
 
 
+def _ot_settings(overtime_type):
+    return frappe.db.get_value(
+        "Overtime Type", overtime_type,
+        [
+            "pre_shift_buffer_minutes", "post_shift_buffer_minutes",
+            "maximum_overtime_hours_allowed", "applicable_for_public_holiday",
+        ],
+        as_dict=True,
+    )
+
+
+def _is_public_holiday(doc):
+    """A Holiday List date that is not the weekly off.
+
+    weekly_off is what separates a declared holiday from Sunday. Sunday is NOT
+    treated as a holiday here: it keeps the normal OT model.
+    """
+    if not doc.get("attendance_date"):
+        return False
+
+    holiday_list = frappe.db.get_value("Employee", doc.employee, "holiday_list") if doc.get("employee") else None
+    if not holiday_list and doc.get("company"):
+        holiday_list = frappe.db.get_value("Company", doc.company, "default_holiday_list")
+    if not holiday_list:
+        return False
+
+    return bool(
+        frappe.db.exists(
+            "Holiday",
+            {
+                "parent": holiday_list,
+                "holiday_date": getdate(doc.attendance_date),
+                "weekly_off": 0,
+            },
+        )
+    )
+
+
 def _compute_overtime(doc, shift):
     """Write the OT fields and return the UNCAPPED OT hours for the base pass."""
     _clear_ot_fields(doc)
@@ -654,11 +705,7 @@ def _compute_overtime(doc, shift):
     if not shift.get("start_time") or not shift.get("end_time"):
         return 0.0
 
-    settings = frappe.db.get_value(
-        "Overtime Type", shift.overtime_type,
-        ["pre_shift_buffer_minutes", "post_shift_buffer_minutes", "maximum_overtime_hours_allowed"],
-        as_dict=True,
-    )
+    settings = _ot_settings(shift.overtime_type)
     if not settings:
         return 0.0
 
@@ -703,7 +750,15 @@ def _compute_overtime(doc, shift):
     early_minutes = (shift_start_dt - in_dt).total_seconds() / 60.0
     late_minutes = (out_dt - shift_end_dt).total_seconds() / 60.0
 
-    if qualifying_hours > 0:
+    if cint(settings.get("applicable_for_public_holiday")) and _is_public_holiday(doc):
+        # --- Public holiday ---------------------------------------------------
+        # Every hour worked is overtime. No threshold, no buffers, no shift to
+        # complete: the day was not a working day at all. Reported as late OT
+        # because there is no shift edge to split the day around.
+        total_ot = total_worked_hours
+        morning_ot = 0.0
+        evening_ot = total_ot
+    elif qualifying_hours > 0:
         # --- Threshold model -------------------------------------------------
         # Hours worked outside the shift window count toward the qualifying
         # hours exactly like hours inside it, so a late arrival is made up
