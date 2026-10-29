@@ -227,6 +227,42 @@ def check_validators():
 	])), "a table that can never move the counter was accepted"
 
 
+def check_backfill_after_newer_period():
+	"""Crediting an OLDER day after a newer one must not wipe the period total.
+
+	`earned` used to be a field that any period change reset. A backfill walks
+	old days after the live run has already stored a newer period, so stepping
+	back zeroed it — which silently disabled the per-period cap and the
+	claw-back guard, leaving granted leave that nothing could take back.
+	"""
+	employee, company = _employee()
+	_policy(company, days_required=2, reset_period="Monthly")
+	leave_type = _leave_type()
+
+	# A newer month first, exactly as the live run then backfill did.
+	_mark(employee, company, "2026-09-07")
+	_mark(employee, company, "2026-09-08")
+	assert _earned(employee) == 1.0, _earned(employee)
+	assert _balance(employee, leave_type) == 1.0, _balance(employee, leave_type)
+
+	# Now an older month. The stored period must not step backwards, and the
+	# earned total must still reflect what was granted.
+	_mark(employee, company, "2026-08-10")
+	period = frappe.db.get_value("Employee", employee, "custom_attendance_credit_period")
+	assert period == "2026-09", period
+
+	# The backfilled day keeps the grant earned: 09-07 + 08-10 still make the
+	# two days it was given for, so cancelling 09-08 alone takes nothing back.
+	frappe.get_doc("Attendance", {"employee": employee, "attendance_date": "2026-09-08"}).cancel()
+	assert _balance(employee, leave_type) == 1.0, _balance(employee, leave_type)
+
+	# Dropping below the threshold must claw it back, which only works while
+	# the earned total is still visible — the bug this check exists for.
+	frappe.get_doc("Attendance", {"employee": employee, "attendance_date": "2026-08-10"}).cancel()
+	assert _balance(employee, leave_type) == 0.0, _balance(employee, leave_type)
+	assert _counter(employee) == 1.0, _counter(employee)  # only 09-07 still credits
+
+
 def run():
 	check_counter_increments()
 	check_grant_at_threshold()
@@ -234,6 +270,7 @@ def run():
 	check_period_reset()
 	check_period_cap()
 	check_cancel_reverses()
+	check_backfill_after_newer_period()
 	check_validators()
 	frappe.db.rollback()
-	print("leave accrual self-check OK (increment, grant, remainder, reset, cap, reversal, validators)")
+	print("leave accrual self-check OK (increment, grant, remainder, reset, cap, reversal, backfill order, validators)")

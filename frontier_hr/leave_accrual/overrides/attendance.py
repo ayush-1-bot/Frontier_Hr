@@ -70,26 +70,52 @@ def _apply_credit(doc, policy, delta):
 	"""Move the counter by `delta`, then settle any grants it crosses."""
 	employee = frappe.get_doc("Employee", doc.employee)
 	period = _period_key(doc, policy)
+	stored = employee.get("custom_attendance_credit_period")
 
-	# A new period starts the counter again, carrying the leftover only when
-	# the policy says to. Done on the first touch of the period rather than on
-	# a schedule, so nothing depends on a job having run.
 	counter = flt(employee.get("custom_attendance_credit_days"))
-	earned = flt(employee.get("custom_attendance_leaves_earned"))
-	if employee.get("custom_attendance_credit_period") != period:
+
+	# Only a LATER period resets the counter. A backfill walks older days after
+	# newer ones are already stored, and treating that as a new period would
+	# reset the counter and the earned total every time it stepped back.
+	if stored and period > stored:
 		counter = counter if policy.carry_forward_counter else 0.0
-		earned = 0.0  # the per-period cap starts again
+	period = max(period, stored) if stored else period
 
 	counter += delta
-	counter, earned = _settle(doc, policy, employee, counter, earned, period)
+	counter = _settle(doc, policy, employee, counter, period)
 
 	employee.db_set("custom_attendance_credit_days", flt(counter, 3), update_modified=False)
-	employee.db_set("custom_attendance_leaves_earned", flt(earned, 3), update_modified=False)
+	employee.db_set(
+		"custom_attendance_leaves_earned",
+		flt(_earned_in_period(employee.name, policy, period), 3),
+		update_modified=False,
+	)
 	employee.db_set("custom_attendance_credit_period", period, update_modified=False)
 	employee.db_set("custom_attendance_accrual_policy", policy.name, update_modified=False)
 
 
-def _settle(doc, policy, employee, counter, earned, period):
+def _earned_in_period(employee, policy, period):
+	"""Leaves already granted in this period, read back from the grant log.
+
+	Derived rather than carried in a field: a field is wiped by any period
+	change, and a wiped total silently disables both the per-period cap and the
+	claw-back guard, leaving granted leave that nothing can take back.
+	"""
+	total = frappe.db.sql(
+		"""
+		SELECT SUM(leaves_granted) FROM `tabAttendance Leave Grant Log`
+		WHERE employee = %(employee)s AND policy = %(policy)s {period_clause}
+		""".format(
+			period_clause=(
+				"AND grant_date LIKE %(like)s" if policy.reset_period != "Never" else ""
+			)
+		),
+		{"employee": employee, "policy": policy.name, "like": f"{period}-%"},
+	)[0][0]
+	return flt(total)
+
+
+def _settle(doc, policy, employee, counter, period):
 	"""Grant while the counter is over the threshold; claw back while it is
 	negative because a cancellation removed the days that earned a grant."""
 	threshold = flt(policy.days_required)
@@ -97,6 +123,7 @@ def _settle(doc, policy, employee, counter, earned, period):
 	cap = flt(policy.max_leaves_per_period)
 
 	while counter >= threshold:
+		earned = _earned_in_period(employee.name, policy, period)
 		if cap and earned + granted > cap + 0.0001:
 			break  # the period's cap is reached; the counter simply keeps growing
 		before = counter
@@ -104,17 +131,18 @@ def _settle(doc, policy, employee, counter, earned, period):
 		if not _grant(doc, policy, employee, granted, before, after, period):
 			break  # allocation refused it; leave the counter alone to retry later
 		counter = after
-		earned += granted
 
-	while counter < 0 and earned >= granted - 0.0001:
+	while counter < 0:
+		# Only give back what this policy actually granted in the period.
+		if _earned_in_period(employee.name, policy, period) < granted - 0.0001:
+			break
 		before = counter
 		after = counter + threshold
 		if not _grant(doc, policy, employee, -granted, before, after, period):
 			break
 		counter = after
-		earned -= granted
 
-	return counter, earned
+	return counter
 
 
 def _period_key(doc, policy):
