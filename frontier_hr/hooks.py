@@ -90,6 +90,11 @@ scheduler_events = {
 		"0 9 * * 1": [
 			"frontier_hr.overtime_extension.tasks.weekly_ot_threshold_check",
 		],
+		# Daily 6 AM — write the shift's checkins and mark Present for employees
+		# flagged exempt from attendance, before anyone looks at the day.
+		"0 6 * * *": [
+			"frontier_hr.vip_attendance.tasks.auto_mark_vip_attendance",
+		],
 		# 1st of every month at 9 AM — the task self-gates on the company's
 		# fiscal-quarter boundary (Apr-Mar by default; reads Frappe FY setting).
 		"0 9 1 * *": [
@@ -133,6 +138,8 @@ doctype_js = {
 # Class Overrides
 # ---------------------------------------------------------------------------
 override_doctype_class = {
+	# Nearest-shift pick and automatic Log Type, off unless HR Settings enables it.
+	"Employee Checkin": "frontier_hr.multi_shift_checkin.employee_checkin_class.CustomEmployeeCheckin",
 	"Overtime Slip": "frontier_hr.overtime_extension.overrides.overtime_slip_class.CustomOvertimeSlip",
 	# Populates the hours/basis fields on the pre-save preview path, where
 	# before_validate never runs — see the salary_slip_class docstring.
@@ -209,6 +216,8 @@ fixtures = [
 					"custom_payroll_basis",
 					# HR Settings — branch-wise birthday toggle (birthday_reminder/)
 					"custom_branch_wise_birthday_reminders",
+					# HR Settings — nearest-shift pick on check-in (multi_shift_checkin/)
+					"custom_pick_nearest_shift",
 					# Attendance — late coming / early out deduction (deduction_policy/)
 					"custom_deduction_section",
 					"custom_deduction_policy",
@@ -222,6 +231,8 @@ fixtures = [
 					"custom_deducted_leave_days",
 					"custom_deducted_hours",
 					"custom_deduction_breakup",
+					# Employee — exempt from punching (vip_attendance/)
+					"custom_exempt_from_attendance",
 					# Attendance / Employee — leave accrual (leave_accrual/)
 					"custom_accrual_credit_days",
 					"custom_attendance_accrual_section",
