@@ -263,6 +263,101 @@ def check_backfill_after_newer_period():
 	assert _counter(employee) == 1.0, _counter(employee)  # only 09-07 still credits
 
 
+def check_non_working_days():
+	"""Holidays and weekly offs earn credit even though they have no Attendance."""
+	from frontier_hr.leave_accrual.tasks import credit_non_working_days
+
+	employee, company = _employee()
+	holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
+	if not holiday_list:
+		print("   (skipped: shift has no holiday list)")
+		return
+
+	# A public holiday and a weekly off that nothing else uses.
+	hol, off = "2026-11-19", "2026-11-22"
+	for date, weekly in ((hol, 0), (off, 1)):
+		if not frappe.db.exists("Holiday", {"parent": holiday_list, "holiday_date": date}):
+			parent = frappe.get_doc("Holiday List", holiday_list)
+			parent.append("holidays", {"holiday_date": date, "description": "_test",
+			                           "weekly_off": weekly})
+			parent.flags.ignore_validate = True
+			parent.save(ignore_permissions=True)
+
+	_policy(company, days_required=20, credits=[
+		{"attendance_status": "Present", "credit": 1},
+		{"attendance_status": "Holiday", "credit": 1},
+		{"attendance_status": "Weekly Off", "credit": 0.5},
+	])
+
+	credit_non_working_days(off)
+	assert _counter(employee) == 1.5, _counter(employee)  # 1 holiday + 0.5 weekly off
+
+	# Running again must not credit the same days twice.
+	credit_non_working_days(off)
+	assert _counter(employee) == 1.5, _counter(employee)
+
+	# A day that already has an Attendance row is left to the submit hook.
+	before = _counter(employee)
+	# A later day with Attendance still credits once, via the submit hook.
+	_mark(employee, company, "2026-11-23")
+	assert _counter(employee) == before + 1.0, _counter(employee)
+
+
+def _user(role):
+	"""A throwaway user with one HR role, for the permlevel check."""
+	email = f"_accrual_{role.lower().replace(' ', '_')}@example.com"
+	if frappe.db.exists("User", email):
+		frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+	doc = frappe.get_doc({
+		"doctype": "User", "email": email, "first_name": "Accrual", "last_name": role,
+		"send_welcome_email": 0, "roles": [{"role": role}],
+	}).insert(ignore_permissions=True)
+	return doc.name
+
+
+def check_policy_field_permlevel():
+	"""Only HR Manager may reassign the accrual policy on an Employee.
+
+	The field sits at permlevel 1. Frappe silently reverts a higher-permlevel
+	field a user cannot write, so the check is that the value did NOT change --
+	not that the save threw.
+	"""
+	from frontier_hr.install import ensure_accrual_permlevel_perms
+
+	ensure_accrual_permlevel_perms()
+	assert frappe.db.get_value(
+		"Custom Field", {"dt": "Employee", "fieldname": "custom_attendance_accrual_policy"},
+		"permlevel",
+	) == 1, "accrual policy field is not at permlevel 1"
+
+	employee, company = _employee()
+	policy = _policy(company)
+	frappe.db.set_value("Employee", employee, "custom_attendance_accrual_policy", policy.name)
+
+	hr_user, hr_manager = _user("HR User"), _user("HR Manager")
+	original = frappe.session.user
+	try:
+		# HR User writes Employee at level 0 but must not touch this field.
+		frappe.set_user(hr_user)
+		doc = frappe.get_doc("Employee", employee)
+		doc.custom_attendance_accrual_policy = None
+		doc.save()
+		assert frappe.db.get_value(
+			"Employee", employee, "custom_attendance_accrual_policy"
+		) == policy.name, "HR User cleared the accrual policy"
+
+		# HR Manager may.
+		frappe.set_user(hr_manager)
+		doc = frappe.get_doc("Employee", employee)
+		doc.custom_attendance_accrual_policy = None
+		doc.save()
+		assert not frappe.db.get_value(
+			"Employee", employee, "custom_attendance_accrual_policy"
+		), "HR Manager could not clear the accrual policy"
+	finally:
+		frappe.set_user(original)
+
+
 def run():
 	check_counter_increments()
 	check_grant_at_threshold()
@@ -271,6 +366,8 @@ def run():
 	check_period_cap()
 	check_cancel_reverses()
 	check_backfill_after_newer_period()
+	check_non_working_days()
 	check_validators()
+	check_policy_field_permlevel()
 	frappe.db.rollback()
-	print("leave accrual self-check OK (increment, grant, remainder, reset, cap, reversal, backfill order, validators)")
+	print("leave accrual self-check OK (increment, grant, remainder, reset, cap, reversal, backfill order, non-working days, validators, policy permlevel)")

@@ -53,3 +53,7 @@ jspm_packages/
 
 # Aider AI Chat
 .aider*
+
+# Throwaway diagnostic scripts
+frontier_hr/**/_diag*.py
+frontier_hr/**/_inspect.py

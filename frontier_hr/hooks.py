@@ -90,6 +90,11 @@ scheduler_events = {
 		"0 9 * * 1": [
 			"frontier_hr.overtime_extension.tasks.weekly_ot_threshold_check",
 		],
+		# Daily 7 AM — credit holidays and weekly offs, which never produce an
+		# Attendance row and so are never seen by the submit hook.
+		"0 7 * * *": [
+			"frontier_hr.leave_accrual.tasks.credit_non_working_days",
+		],
 		# Daily 6 AM — write the shift's checkins and mark Present for employees
 		# flagged exempt from attendance, before anyone looks at the day.
 		"0 6 * * *": [
@@ -122,6 +127,9 @@ after_migrate = [
 	"frontier_hr.patches.fix_attendance_field_order.execute",
 	"frontier_hr.patches.fix_salary_slip_field_order.execute",
 	"frontier_hr.birthday_reminder.tasks.stop_hrms_birthday_job",
+	# Level-1 perms for the Employee accrual policy field. Must run after the
+	# fixtures install that field, so after_migrate rather than before.
+	"frontier_hr.install.ensure_accrual_permlevel_perms",
 ]
 
 # ---------------------------------------------------------------------------
@@ -238,6 +246,7 @@ fixtures = [
 					"custom_attendance_accrual_section",
 					"custom_attendance_credit_days",
 					"custom_attendance_credit_period",
+					"custom_attendance_credit_upto",
 					"custom_accrual_col_break",
 					"custom_attendance_leaves_earned",
 					"custom_attendance_accrual_policy",
