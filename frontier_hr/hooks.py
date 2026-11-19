@@ -49,13 +49,42 @@ doc_events = {
 			"frontier_hr.leave_accrual.overrides.attendance.reverse_on_cancel",
 		],
 	},
+	# Approving one rewrites a submitted Attendance's status with db_set, which
+	# runs no hooks -- so the day's accrual credit has to be recomputed here or
+	# a Half Day promoted to Present keeps the 0.5 it earned.
+	"Attendance Request": {
+		# Deduction before accrual, the same order the Attendance hooks use.
+		"on_submit": [
+			"frontier_hr.deduction_policy.overrides.attendance.resync_attendance_range",
+			"frontier_hr.leave_accrual.overrides.attendance.resync_attendance_range",
+		],
+		"on_cancel": [
+			"frontier_hr.deduction_policy.overrides.attendance.resync_attendance_range",
+			"frontier_hr.leave_accrual.overrides.attendance.resync_attendance_range",
+		],
+	},
 	# hrms flips the Attendance day to On Leave with db_set, which runs no
 	# hooks — so the hours have to be recomputed from here. See the module
 	# docstring in overtime_extension/overrides/leave_application.py.
 	"Leave Application": {
-		"on_submit": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
-		"on_cancel": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
-		"on_update_after_submit": "frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
+		# Entries 2 and 3: hrms rewrites a submitted Attendance's status with
+		# db_set, and cancels one with a raw docstatus update, so the deduction
+		# and the accrual counter both have to be resynced from here too.
+		"on_submit": [
+			"frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
+			"frontier_hr.deduction_policy.overrides.attendance.resync_attendance_range",
+			"frontier_hr.leave_accrual.overrides.attendance.resync_attendance_range",
+		],
+		"on_cancel": [
+			"frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
+			"frontier_hr.deduction_policy.overrides.attendance.resync_attendance_range",
+			"frontier_hr.leave_accrual.overrides.attendance.resync_attendance_range",
+		],
+		"on_update_after_submit": [
+			"frontier_hr.overtime_extension.overrides.leave_application.recompute_attendance_hours",
+			"frontier_hr.deduction_policy.overrides.attendance.resync_attendance_range",
+			"frontier_hr.leave_accrual.overrides.attendance.resync_attendance_range",
+		],
 	},
 	# Lunch window -> custom_lunch_break_minutes. See overrides/shift_type.py.
 	"Shift Type": {
@@ -130,6 +159,8 @@ after_migrate = [
 	# Level-1 perms for the Employee accrual policy field. Must run after the
 	# fixtures install that field, so after_migrate rather than before.
 	"frontier_hr.install.ensure_accrual_permlevel_perms",
+	# shift_type Link -> shift_types table. Idempotent; see install.py.
+	"frontier_hr.install.fold_policy_shift_types",
 ]
 
 # ---------------------------------------------------------------------------

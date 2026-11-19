@@ -58,3 +58,32 @@ def ensure_accrual_permlevel_perms():
 		)
 
 	frappe.clear_cache(doctype="Employee")
+
+
+# Policies whose old single shift_type Link has to move into shift_types.
+SHIFT_SCOPED_POLICIES = (
+	"Attendance Leave Accrual Policy",
+	"Late Coming and Early Out Deduction Policy",
+)
+
+
+def fold_policy_shift_types():
+	"""Move every policy's old single shift_type into the Shift Types table.
+
+	The controllers fold it on validate, but a policy nobody opens would keep a
+	hidden Link that only the legacy branch of the resolver still reads. Done
+	here so the switch to a multi-shift table needs no re-saving by hand.
+
+	Idempotent: the fold clears the Link, so a second migrate finds nothing.
+	"""
+	from frontier_hr.policy_scope import fold_legacy_shift
+
+	for doctype in SHIFT_SCOPED_POLICIES:
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		for name in frappe.get_all(doctype, filters={"shift_type": ["is", "set"]}, pluck="name"):
+			policy = frappe.get_doc(doctype, name)
+			fold_legacy_shift(policy)
+			# save(), not db_set: the table row has to be inserted as a child.
+			policy.flags.ignore_permissions = True
+			policy.save()

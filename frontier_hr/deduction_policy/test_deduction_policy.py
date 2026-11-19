@@ -218,14 +218,26 @@ def check_allowance_and_walk():
 	assert small.custom_late_coming_minutes == 0, small.custom_late_coming_minutes
 	assert small.custom_deduction_minutes == 0, small.custom_deduction_minutes
 
+	# The policy was created with the old single shift_type Link, which the
+	# controller folds into the Shift Types table.
+	assert not policy.shift_type, f"legacy Link left set: {policy.shift_type}"
+	assert [row.shift_type for row in policy.shift_types] == [SHIFT], policy.shift_types
+
 	# Re-scoped to another shift, this policy must stop matching the row. Any
 	# real policy on the site may then take over, which is correct behaviour —
 	# so the check is that THIS policy stepped aside, not that none matched.
 	if frappe.db.exists("Shift Type", "testing"):
-		policy.shift_type = "testing"
+		policy.set("shift_types", [{"shift_type": "testing"}])
 		policy.save(ignore_permissions=True)
 		made[3].save(ignore_permissions=True)
 		assert made[3].custom_deduction_policy != NAME, made[3].custom_deduction_policy
+
+		# ...and listing both shifts brings it back, which is the whole point
+		# of the table: one policy for several shifts instead of a copy each.
+		policy.append("shift_types", {"shift_type": SHIFT})
+		policy.save(ignore_permissions=True)
+		made[3].save(ignore_permissions=True)
+		assert made[3].custom_deduction_policy == NAME, made[3].custom_deduction_policy
 
 
 def _leave_type(name, **kwargs):
@@ -509,6 +521,139 @@ def check_balance_drains_across_days():
 	assert _balance(employee, short, "2026-11-18") == 0.0, _balance(employee, short, "2026-11-18")
 
 
+def _net_posted(attendance):
+	"""Net leaves this Attendance row has moved. 0 = none, or reversed."""
+	total = frappe.db.sql(
+		"""SELECT SUM(leaves) FROM `tabLeave Ledger Entry`
+		   WHERE transaction_type = 'Attendance' AND transaction_name = %s AND docstatus = 1""",
+		attendance,
+	)[0][0]
+	return round(float(total or 0), 4)
+
+
+def _late_attendance(employee, company, date, status="Half Day"):
+	"""A submitted, two hours late Attendance that has debited leave."""
+	doc = frappe.get_doc({
+		"doctype": "Attendance",
+		"employee": employee,
+		"attendance_date": date,
+		"status": status,
+		# What auto-attendance writes, and what lets hrms accept a leave over
+		# an already-marked day.
+		"half_day_status": "Absent" if status == "Half Day" else None,
+		"company": company,
+		"shift": SHIFT,
+		"in_time": f"{date} 11:00:00",
+		"out_time": f"{date} 18:30:00",
+		"working_hours": 7.0,
+	}).insert(ignore_permissions=True)
+	doc.submit()
+	assert doc.custom_deduction_minutes == 120, doc.custom_deduction_minutes
+	assert _net_posted(doc.name) == -0.5, _net_posted(doc.name)
+	return doc
+
+
+def check_raw_write_resync():
+	"""The three places hrms rewrites a submitted Attendance behind the ORM.
+
+	Each one runs no hook, so without the resync the deduction's leave debit is
+	left behind on a day that no longer earns it -- the employee stays short a
+	leave with nothing pointing at why.
+	"""
+	employee, company = _test_employee()
+	short = _leave_type("Short Leave", max_leaves_allowed=10)
+	paid = _leave_type("_Test Deduct Paid Leave")
+	_allocate(employee, short, 3, company)
+	_allocate(employee, paid, 5, company)
+
+	# 1 unit = 2 hours = 0.5 day, so the 120 minute deduction costs 0.5 day.
+	_drop_policy()
+	frappe.get_doc({
+		"doctype": POLICY,
+		"policy_name": NAME,
+		"company": company,
+		"shift_type": SHIFT,
+		"priority": 999,
+		"late_grace_minutes": 10,
+		"allowance_period": "Monthly",
+		"allowed_late_count": 0,
+		"deduction_slabs": [
+			{"applies_to": "Both", "from_minutes": 1, "to_minutes": 0, "deduct_minutes": 120},
+		],
+		"deduction_priority": [
+			{"source": "Leave", "leave_type": short, "hours_per_unit": 2, "days_per_unit": 0.5},
+			{"source": "Working Hours"},
+		],
+	}).insert(ignore_permissions=True)
+
+	def leave(date, half_day=0):
+		doc = frappe.get_doc({
+			"doctype": "Leave Application", "employee": employee, "leave_type": paid,
+			"from_date": date, "to_date": date, "company": company, "status": "Approved",
+			"leave_approver": frappe.session.user,
+			"half_day": half_day, "half_day_date": date if half_day else None,
+		}).insert(ignore_permissions=True)
+		doc.submit()
+		return doc
+
+	# --- 1. AttendanceRequest.create_or_update_attendance ---------------
+	# db_set("status"): Half Day -> Present. The punches are unchanged, so the
+	# day is still late and still costs 0.5 -- the point is that the ledger is
+	# reposted once, not debited a second time.
+	date = "2026-11-09"
+	attendance = _late_attendance(employee, company, date)
+	frappe.get_doc({
+		"doctype": "Attendance Request", "employee": employee, "company": company,
+		"from_date": date, "to_date": date, "reason": "On Duty", "half_day": 0,
+		# hrms matches the existing Attendance on shift too, so a request
+		# without one inserts a second row and hits DuplicateAttendanceError.
+		"shift": SHIFT,
+	}).insert(ignore_permissions=True).submit()
+
+	row = frappe.db.get_value("Attendance", attendance.name,
+	                          ["status", "custom_deduction_minutes"], as_dict=True)
+	assert row.status == "Present", row
+	assert row.custom_deduction_minutes == 120, row
+	assert _net_posted(attendance.name) == -0.5, f"debited twice: {_net_posted(attendance.name)}"
+	ledger = {"transaction_type": "Attendance", "transaction_name": attendance.name, "docstatus": 1}
+	assert frappe.db.count("Leave Ledger Entry", ledger) == 1, frappe.db.count("Leave Ledger Entry", ledger)
+
+	# --- 2. LeaveApplication.create_or_update_attendance ----------------
+	# db_set("status"): Half Day -> On Leave. A leave day has no punches to be
+	# late from, so the deduction and its debit must both go.
+	date = "2026-11-10"
+	attendance = _late_attendance(employee, company, date)
+	before = _balance(employee, short, date)
+	leave(date)
+
+	row = frappe.db.get_value(
+		"Attendance", attendance.name,
+		["status", "custom_deduction_minutes", "custom_deducted_leave_days"], as_dict=True)
+	assert row.status == "On Leave", row
+	assert row.custom_deduction_minutes == 0, f"On Leave still deducts: {row}"
+	assert row.custom_deducted_leave_days == 0, row
+	assert _net_posted(attendance.name) == 0, _net_posted(attendance.name)
+	assert frappe.db.count("Attendance Deduction Entry", {"parent": attendance.name}) == 0
+	assert _balance(employee, short, date) == before + 0.5, _balance(employee, short, date)
+
+	# --- 3. LeaveApplication.cancel_attendance --------------------------
+	# set_value("docstatus", 2): a cancel that fires no on_cancel. A half day
+	# leave leaves the status at Half Day, so the day keeps its deduction right
+	# up to the cancel -- and the cancel has to give that leave back.
+	date = "2026-11-11"
+	attendance = _late_attendance(employee, company, date)
+	before = _balance(employee, short, date)
+	application = leave(date, half_day=1)
+
+	assert frappe.db.get_value("Attendance", attendance.name, "status") == "Half Day"
+	assert _net_posted(attendance.name) == -0.5, _net_posted(attendance.name)
+
+	application.cancel()
+	assert frappe.db.get_value("Attendance", attendance.name, "docstatus") == 2
+	assert _net_posted(attendance.name) == 0, f"orphan debit on a cancelled row: {_net_posted(attendance.name)}"
+	assert _balance(employee, short, date) == before + 0.5, _balance(employee, short, date)
+
+
 def run():
 	check_measurement()
 	check_allowance_and_walk()
@@ -516,6 +661,7 @@ def run():
 	check_report_only()
 	check_actual_minutes()
 	check_balance_drains_across_days()
+	check_raw_write_resync()
 	frappe.db.rollback()
 
 	_drop_policy()
@@ -570,4 +716,4 @@ def run():
 	])), "a zero conversion rate was accepted"
 
 	frappe.db.rollback()
-	print("deduction policy self-check OK (measurement, ranges, actual minutes, validators, grace quota, leave walk, balance drain, report only)")
+	print("deduction policy self-check OK (measurement, ranges, actual minutes, validators, grace quota, leave walk, balance drain, report only, raw write resync, multiple shifts)")

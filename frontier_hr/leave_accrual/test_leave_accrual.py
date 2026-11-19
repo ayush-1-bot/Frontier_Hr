@@ -6,9 +6,10 @@ Rolls everything back, so it is safe against a site with real data.
 """
 
 import frappe
-from frappe.utils import add_days, flt, getdate
+from frappe.utils import add_days, flt, getdate, today
 
 POLICY = "Attendance Leave Accrual Policy"
+GRANT_LOG = "Attendance Leave Grant Log"
 NAME = "_Test Accrual Policy"
 SHIFT = "day"
 LEAVE_TYPE = "_Test Earned Leave"
@@ -65,10 +66,10 @@ def _policy(company, **overrides):
 	return frappe.get_doc(values).insert(ignore_permissions=True)
 
 
-def _mark(employee, company, date, status="Present"):
+def _mark(employee, company, date, status="Present", shift=SHIFT):
 	doc = frappe.get_doc({
 		"doctype": "Attendance", "employee": employee, "attendance_date": date,
-		"status": status, "company": company, "shift": SHIFT,
+		"status": status, "company": company, "shift": shift,
 	}).insert(ignore_permissions=True)
 	doc.submit()
 	return doc
@@ -273,8 +274,17 @@ def check_non_working_days():
 		print("   (skipped: shift has no holiday list)")
 		return
 
-	# A public holiday and a weekly off that nothing else uses.
-	hol, off = "2026-11-19", "2026-11-22"
+	# A public holiday and a weekly off that nothing else uses, both in the
+	# PAST: credit_non_working_days refuses to walk past today, and a fixed
+	# future date would stop working the moment that date arrived.
+	off = add_days(getdate(today()), -2)
+	hol = add_days(off, -1)
+	while frappe.db.exists("Holiday", {"parent": holiday_list, "holiday_date": hol}) or \
+			frappe.db.exists("Holiday", {"parent": holiday_list, "holiday_date": off}):
+		off = add_days(off, -2)
+		hol = add_days(off, -1)
+	frappe.db.set_value("Employee", employee, "custom_attendance_credit_upto",
+	                    add_days(hol, -1), update_modified=False)
 	for date, weekly in ((hol, 0), (off, 1)):
 		if not frappe.db.exists("Holiday", {"parent": holiday_list, "holiday_date": date}):
 			parent = frappe.get_doc("Holiday List", holiday_list)
@@ -283,24 +293,72 @@ def check_non_working_days():
 			parent.flags.ignore_validate = True
 			parent.save(ignore_permissions=True)
 
-	_policy(company, days_required=20, credits=[
+	policy = _policy(company, days_required=20, credits=[
 		{"attendance_status": "Present", "credit": 1},
 		{"attendance_status": "Holiday", "credit": 1},
 		{"attendance_status": "Weekly Off", "credit": 0.5},
 	])
+	assert policy.credit_holidays == 1, "the holiday switch must default to on"
+	assert policy.credit_weekly_offs == 1, "the weekly off switch must default to on"
 
-	credit_non_working_days(off)
+	def rewind():
+		frappe.db.set_value("Employee", employee, {
+			"custom_attendance_credit_days": 0,
+			"custom_attendance_credit_upto": add_days(hol, -1),
+		}, update_modified=False)
+
+	def switches(holidays, weekly_offs):
+		policy.db_set("credit_holidays", holidays)
+		policy.db_set("credit_weekly_offs", weekly_offs)
+		frappe.clear_document_cache(POLICY, policy.name)
+
+	# Both off: nothing is credited however the credit table is filled.
+	switches(0, 0)
+	credit_non_working_days(off, employee=employee)
+	assert _counter(employee) == 0, _counter(employee)
+
+	# Holidays only -- the weekly off must stay out.
+	rewind()
+	switches(1, 0)
+	credit_non_working_days(off, employee=employee)
+	assert _counter(employee) == 1.0, f"holiday-only gave {_counter(employee)}, wanted 1.0"
+
+	# Weekly offs only -- the public holiday must stay out.
+	rewind()
+	switches(0, 1)
+	credit_non_working_days(off, employee=employee)
+	assert _counter(employee) == 0.5, f"weekly-off-only gave {_counter(employee)}, wanted 0.5"
+
+	rewind()
+	switches(1, 1)
+	credit_non_working_days(off, employee=employee)
 	assert _counter(employee) == 1.5, _counter(employee)  # 1 holiday + 0.5 weekly off
 
 	# Running again must not credit the same days twice.
-	credit_non_working_days(off)
+	credit_non_working_days(off, employee=employee)
 	assert _counter(employee) == 1.5, _counter(employee)
 
 	# A day that already has an Attendance row is left to the submit hook.
 	before = _counter(employee)
 	# A later day with Attendance still credits once, via the submit hook.
-	_mark(employee, company, "2026-11-23")
+	_mark(employee, company, add_days(off, 1))
 	assert _counter(employee) == before + 1.0, _counter(employee)
+
+	# The job must leave the commit to its caller, or a test's rollback cannot
+	# undo it and the watermark lands on every employee on the site.
+	import inspect
+
+	from frontier_hr.leave_accrual import tasks
+
+	assert "db.commit" not in inspect.getsource(tasks.credit_non_working_days), \
+		"credit_non_working_days commits; a caller's rollback can no longer undo it"
+
+	# A date past today is clamped, so a typo cannot park the watermark in the
+	# future and make every later run skip the days in between.
+	credit_non_working_days(add_days(getdate(today()), 30), employee=employee)
+	assert getdate(frappe.db.get_value(
+		"Employee", employee, "custom_attendance_credit_upto"
+	)) <= getdate(today()), "watermark moved into the future"
 
 
 def _user(role):
@@ -358,6 +416,210 @@ def check_policy_field_permlevel():
 		frappe.set_user(original)
 
 
+def check_grant_across_month_boundary():
+	"""A grant triggered by an older day still counts in the current period.
+
+	Bulk Mark Attendance submits newest first. The counter's period only moves
+	forward, so a day from the previous month is credited while the period
+	says this month -- and the grant log's grant_date is that older date. If
+	`earned` were read from grant_date's own month it would come back 0, which
+	silently disables the per-period cap and the claw-back guard.
+	"""
+	employee, company = _employee()
+	policy = _policy(company, days_required=20, reset_period="Monthly",
+	                 carry_forward_remainder=1)
+
+	# 21 days ending today, submitted NEWEST first, so the 21st row is the
+	# oldest date and falls in the previous month.
+	dates = [add_days(getdate(today()), -i) for i in range(21)]
+	assert dates[0].month != dates[-1].month, "pick a window that crosses a month"
+	for date in dates:
+		_mark(employee, company, date)
+
+	period = frappe.db.get_value("Employee", employee, "custom_attendance_credit_period")
+	assert period == dates[0].strftime("%Y-%m"), period
+
+	log = frappe.get_all(
+		GRANT_LOG, filters={"employee": employee},
+		fields=["grant_date", "period", "leaves_granted", "leave_allocation"],
+	)
+	assert len(log) == 1, log
+	assert log[0].period == period, f"grant charged to {log[0].period}, counter is in {period}"
+	assert log[0].leave_allocation, "no allocation on the grant"
+
+	# 21 days, one leave at 20, one day carried.
+	assert _counter(employee) == 1.0, _counter(employee)
+	assert _earned(employee) == 1.0, f"earned reads {_earned(employee)}, expected 1.0"
+
+
+def check_attendance_request_promotes_half_day():
+	"""A Half Day promoted to Present by an Attendance Request re-credits.
+
+	hrms rewrites the status with db_set, which runs no hooks, so without the
+	Attendance Request hook the day keeps the 0.5 it earned as a half day.
+	"""
+	employee, company = _employee()
+	_policy(company, days_required=20)
+
+	date = add_days(getdate(today()), -1)
+	_mark(employee, company, date, status="Half Day")
+	assert _counter(employee) == 0.5, _counter(employee)
+
+	frappe.get_doc({
+		"doctype": "Attendance Request", "employee": employee, "company": company,
+		"from_date": date, "to_date": date, "reason": "On Duty", "half_day": 0,
+		# hrms matches the existing Attendance on shift too, so a request
+		# without one inserts a second row and hits DuplicateAttendanceError.
+		"shift": SHIFT,
+	}).insert(ignore_permissions=True).submit()
+
+	attendance = frappe.db.get_value(
+		"Attendance", {"employee": employee, "attendance_date": date, "docstatus": 1},
+		["name", "status", "custom_accrual_credit_days"], as_dict=True,
+	)
+	assert attendance.status == "Present", attendance
+	assert attendance.custom_accrual_credit_days == 1.0, attendance
+	assert _counter(employee) == 1.0, f"counter stayed at {_counter(employee)}"
+
+
+def check_leave_application_resyncs():
+	"""A Half Day turned into leave loses its credit, and gets it back on cancel.
+
+	hrms rewrites the status with db_set and later cancels the row with a raw
+	docstatus update -- neither runs a hook, so without the Leave Application
+	resync the day keeps the 0.5 it earned as a half day.
+	"""
+	employee, company = _employee()
+	_policy(company, days_required=20)
+	leave_type = _leave_type()
+
+	date = add_days(getdate(today()), -4)
+	allocation = frappe.get_doc({
+		"doctype": "Leave Allocation", "employee": employee, "leave_type": leave_type,
+		"from_date": add_days(date, -30), "to_date": add_days(date, 30),
+		"new_leaves_allocated": 10, "company": company,
+	}).insert(ignore_permissions=True)
+	allocation.submit()
+
+	# half_day_status "Absent" is what auto-attendance writes, and is also what
+	# lets hrms accept a leave over an already-marked day.
+	attendance = _mark(employee, company, date, status="Half Day")
+	attendance.db_set("half_day_status", "Absent")
+	assert _counter(employee) == 0.5, _counter(employee)
+
+	application = frappe.get_doc({
+		"doctype": "Leave Application", "employee": employee, "leave_type": leave_type,
+		"from_date": date, "to_date": date, "company": company, "status": "Approved",
+		"leave_approver": frappe.session.user,
+	}).insert(ignore_permissions=True)
+	application.submit()
+
+	row = frappe.db.get_value("Attendance", attendance.name,
+	                          ["status", "docstatus", "custom_accrual_credit_days"], as_dict=True)
+	assert row.status == "On Leave", row
+	assert row.custom_accrual_credit_days == 0, row
+	assert _counter(employee) == 0, f"On Leave still earns {_counter(employee)}"
+
+	# Cancelling the leave cancels the Attendance in raw SQL, firing no
+	# on_cancel. There is nothing left to give back, so the counter holds at 0.
+	application.cancel()
+	assert _counter(employee) == 0, _counter(employee)
+
+
+def _lwp_leave_type():
+	name = "_Test LWP Leave"
+	if not frappe.db.exists("Leave Type", name):
+		frappe.get_doc({
+			"doctype": "Leave Type", "leave_type_name": name, "is_lwp": 1,
+			"max_leaves_allowed": 0,
+		}).insert(ignore_permissions=True)
+	return name
+
+
+def check_paid_leave_and_work_from_home():
+	"""On Leave earns only on paid leave; Work From Home earns its own row.
+
+	The paid rule is a policy switch, so a site that does credit Leave Without
+	Pay can still do it. Work From Home needs no switch: the credit table has a
+	row of its own, set to 1 to rate it as a full present day.
+	"""
+	from frontier_hr.leave_accrual.overrides.attendance import _credit_for
+
+	employee, company = _employee()
+	paid, lwp = _leave_type(), _lwp_leave_type()
+	policy = _policy(company, credits=[
+		{"attendance_status": "Present", "credit": 1},
+		{"attendance_status": "Half Day", "credit": 0.5, "half_day_credit": 1},
+		{"attendance_status": "On Leave", "credit": 1},
+		{"attendance_status": "Work From Home", "credit": 1},
+	])
+	assert policy.credit_paid_leave_only == 1, "paid leave only should default on"
+
+	def credit(**row):
+		return _credit_for(frappe._dict(row), policy)
+
+	# --- On Leave --------------------------------------------------------
+	assert credit(status="On Leave", leave_type=paid) == 1.0
+	assert credit(status="On Leave", leave_type=lwp) == 0.0, "LWP earned credit"
+	# The half day bonus is for a paid other half, so it follows the same rule.
+	assert credit(status="Half Day", half_day_status="Present", leave_type=paid) == 1.0
+	assert credit(status="Half Day", half_day_status="Present", leave_type=lwp) == 0.5
+	# A plain half day with no leave at all keeps the plain rate.
+	assert credit(status="Half Day", half_day_status="Absent") == 0.5
+
+	policy.credit_paid_leave_only = 0
+	assert credit(status="On Leave", leave_type=lwp) == 1.0
+	assert credit(status="Half Day", half_day_status="Present", leave_type=lwp) == 1.0
+	policy.credit_paid_leave_only = 1
+
+	# --- Work From Home --------------------------------------------------
+	# Straight off its own row, at whatever the table says -- 1 here, so the
+	# day counts the same as being in the office.
+	assert credit(status="Work From Home") == 1.0, credit(status="Work From Home")
+
+	# And the whole way through a real Attendance, not just the lookup.
+	_mark(employee, company, add_days(getdate(today()), -2), status="Work From Home")
+	assert _counter(employee) == 1.0, _counter(employee)
+
+
+def check_multiple_shift_scope():
+	"""A policy can pin several shifts, and the old single Link still works.
+
+	Runs on a shift the SITE's own policies do not pin, so an unmatched test
+	policy means no policy matches at all -- otherwise a real policy would
+	quietly take over and the "no credit" case would still credit.
+	"""
+	employee, company = _employee()
+	other = frappe.db.get_value("Shift Type", {"name": ["!=", SHIFT]}, "name")
+	assert other, "this check needs a second Shift Type on the site"
+
+	# --- pinned to another shift: no match, no credit -------------------
+	_policy(company, shift_types=[{"shift_type": SHIFT}])
+	_mark(employee, company, "2026-03-02", shift=other)
+	assert _counter(employee) == 0.0, _counter(employee)
+
+	# --- both shifts listed: matches ------------------------------------
+	_policy(company, shift_types=[{"shift_type": SHIFT}, {"shift_type": other}])
+	_mark(employee, company, "2026-03-03", shift=other)
+	assert _counter(employee) == 1.0, _counter(employee)
+
+	# --- empty table: every shift ---------------------------------------
+	_policy(company)
+	_mark(employee, company, "2026-03-04", shift=other)
+	assert _counter(employee) == 2.0, _counter(employee)
+
+	# --- the old single Link is folded into the table on save -----------
+	policy = _policy(company, shift_type=other)
+	assert not policy.shift_type, f"legacy Link left set: {policy.shift_type}"
+	assert [row.shift_type for row in policy.shift_types] == [other], policy.shift_types
+	_mark(employee, company, "2026-03-05", shift=other)
+	assert _counter(employee) == 3.0, _counter(employee)
+
+	# --- a shift listed twice must not count double ---------------------
+	policy = _policy(company, shift_types=[{"shift_type": other}, {"shift_type": other}])
+	assert len(policy.shift_types) == 1, policy.shift_types
+
+
 def run():
 	check_counter_increments()
 	check_grant_at_threshold()
@@ -369,5 +631,10 @@ def run():
 	check_non_working_days()
 	check_validators()
 	check_policy_field_permlevel()
+	check_grant_across_month_boundary()
+	check_attendance_request_promotes_half_day()
+	check_leave_application_resyncs()
+	check_paid_leave_and_work_from_home()
+	check_multiple_shift_scope()
 	frappe.db.rollback()
-	print("leave accrual self-check OK (increment, grant, remainder, reset, cap, reversal, backfill order, non-working days, validators, policy permlevel)")
+	print("leave accrual self-check OK (increment, grant, remainder, reset, cap, reversal, backfill order, non-working days, validators, policy permlevel, month boundary, attendance request, leave application, paid leave only, work from home, multiple shifts)")

@@ -18,6 +18,7 @@
   "department",
   "column_break_scope",
   "shift_type",
+  "shift_types",
   "employee_grade",
   "grace_section",
   "late_grace_minutes",
@@ -51,10 +52,10 @@
   },
   {
    "default": "0",
+   "description": "Record what would be deducted, but take nothing from pay or leave.",
    "fieldname": "report_only",
    "fieldtype": "Check",
-   "label": "Report Only, Do Not Deduct",
-   "description": "Record what would be deducted, but take nothing from pay or leave."
+   "label": "Report Only, Do Not Deduct"
   },
   {
    "fieldname": "column_break_head",
@@ -97,10 +98,20 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "Replaced by Shift Types. Folded into it on the next save.",
    "fieldname": "shift_type",
    "fieldtype": "Link",
-   "label": "Shift Type",
-   "options": "Shift Type"
+   "hidden": 1,
+   "label": "Shift Type (Deprecated)",
+   "options": "Shift Type",
+   "read_only": 1
+  },
+  {
+   "description": "Shifts this policy applies to. Leave empty for every shift.",
+   "fieldname": "shift_types",
+   "fieldtype": "Table MultiSelect",
+   "label": "Shift Types",
+   "options": "Attendance Policy Shift"
   },
   {
    "fieldname": "employee_grade",
@@ -191,12 +202,12 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.deduction_basis == \"Deduction Range\"",
    "fieldname": "deduction_slabs",
    "fieldtype": "Table",
    "label": "Deduction Slabs",
-   "options": "Attendance Deduction Slab",
-   "depends_on": "eval:doc.deduction_basis == \"Deduction Range\"",
-   "mandatory_depends_on": "eval:doc.deduction_basis == \"Deduction Range\""
+   "mandatory_depends_on": "eval:doc.deduction_basis == \"Deduction Range\"",
+   "options": "Attendance Deduction Slab"
   },
   {
    "description": "Taken from these sources in order. A leave row is used while the balance lasts, the rest falls through. End with Working Hours.",

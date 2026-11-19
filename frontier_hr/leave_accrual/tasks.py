@@ -29,13 +29,27 @@ from frontier_hr.leave_accrual.overrides.attendance import (
 MAX_CATCHUP_DAYS = 31
 
 
-def credit_non_working_days(date_str=None):
-	"""Credit holidays and weekly offs up to `date_str` (yesterday by default)."""
-	upto = getdate(date_str) if date_str else add_days(getdate(today()), -1)
+def credit_non_working_days(date_str=None, employee=None):
+	"""Credit holidays and weekly offs up to `date_str` (yesterday by default).
+
+	`employee` limits the run to one person, for a re-run or a test.
+
+	Does NOT commit: the scheduler and `bench execute` both commit when the job
+	returns, and committing here would make the work survive a caller's
+	rollback -- which is exactly how a test once wrote its watermark onto every
+	employee on the site.
+	"""
+	# Never walk past today. A future watermark would make every later run skip
+	# the days in between, and nothing would say why.
+	upto = min(getdate(date_str), getdate(today())) if date_str else add_days(getdate(today()), -1)
+
+	filters = {"status": "Active"}
+	if employee:
+		filters["name"] = employee
 
 	employees = frappe.get_all(
 		"Employee",
-		filters={"status": "Active"},
+		filters=filters,
 		fields=["name", "company", "department", "holiday_list",
 		        "custom_attendance_credit_upto"],
 	)
@@ -65,7 +79,6 @@ def credit_non_working_days(date_str=None):
 			update_modified=False,
 		)
 
-	frappe.db.commit()
 	frappe.logger().info(f"Leave Accrual: walked {walked} days, credited {credited}")
 	return {"walked": walked, "credited": credited, "upto": str(upto)}
 
@@ -94,6 +107,13 @@ def _credit_day(employee, date):
 	)
 	policy = _resolve_policy(doc)
 	if not policy:
+		return False
+
+	# Each day type has its own switch, so a site can credit public holidays
+	# without crediting every Sunday, or the other way round. Off means the day
+	# earns nothing whatever the credit table says.
+	switch = "credit_weekly_offs" if day_type == "Weekly Off" else "credit_holidays"
+	if not policy.get(switch):
 		return False
 
 	credit = _credit_for_day_type(policy, day_type)

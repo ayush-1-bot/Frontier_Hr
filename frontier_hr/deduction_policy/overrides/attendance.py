@@ -21,7 +21,11 @@ from frappe import _
 from frappe.utils import add_days, cint, flt, get_datetime, get_first_day, get_last_day, getdate
 from datetime import timedelta
 
-from frontier_hr.overtime_extension.overrides.attendance import _get_shift_settings
+from frontier_hr.policy_scope import pinned_shifts
+from frontier_hr.overtime_extension.overrides.attendance import (
+	apply_buffer_logic,
+	_get_shift_settings,
+)
 
 # No punch pair to judge. Half Day has one and can be late, so it is excluded.
 NO_PUNCH_STATUSES = ("Absent", "On Leave")
@@ -133,6 +137,104 @@ def post_leave_ledger(doc, method=None):
 		_write_ledger(doc, row.leave_type, outstanding)
 
 
+def resync_attendance_range(doc, method=None):
+	"""Recompute the deduction on every Attendance day a leave or attendance
+	request touched.
+
+	hrms rewrites a SUBMITTED Attendance behind the ORM in three places, none
+	of which run a hook, so the deduction and its leave debit never hear about
+	it:
+
+	  AttendanceRequest.create_or_update_attendance
+	      db_set("status", ...)            Half Day -> Present
+	  LeaveApplication.create_or_update_attendance
+	      db_set("status", ...)            Half Day / Absent -> On Leave
+	  LeaveApplication.cancel_attendance
+	      set_value("docstatus", 2)        a cancel that fires no on_cancel
+
+	The second one leaves the employee short a leave they were never late for:
+	an approved leave turns the day into On Leave, which has no punches to be
+	late from, but the Leave Ledger Entry the deduction posted stays behind.
+	The third leaves that entry behind on a row that no longer exists.
+
+	Both doctypes carry employee / from_date / to_date, so one pass serves
+	both. The whole pipeline is re-run rather than patched, and the ledger is
+	deleted before it is reposted, so running this twice changes nothing.
+	"""
+	if not (doc.get("employee") and doc.get("from_date") and doc.get("to_date")):
+		return
+
+	rows = frappe.get_all(
+		"Attendance",
+		filters={
+			"employee": doc.employee,
+			"attendance_date": ["between", [doc.from_date, doc.to_date]],
+		},
+		fields=["name", "docstatus"],
+	)
+
+	for row in rows:
+		attendance = frappe.get_doc("Attendance", row.name)
+		if row.docstatus == 2:
+			# Cancelled, possibly by that raw docstatus flip, so give the leave
+			# back. A row cancelled the normal way has already been cleared,
+			# and the DELETE is a no-op the second time.
+			cancel_leave_ledger(attendance)
+		elif row.docstatus == 1:
+			_resync_submitted(attendance)
+
+
+# Written back by hand rather than through doc.save(): these rows are
+# submitted and the deduction fields are not allow_on_submit.
+_RESYNC_FIELDS = (
+	"custom_deduction_policy",
+	"custom_late_coming_raw_minutes",
+	"custom_late_coming_minutes",
+	"custom_early_out_raw_minutes",
+	"custom_early_out_minutes",
+	"custom_deduction_minutes",
+	"custom_deduction_report_only",
+	"custom_deducted_leave_days",
+	"custom_deducted_hours",
+	# apply_deduction subtracts from this, so it has to be written with them.
+	"custom_base_hours",
+)
+
+
+def _resync_submitted(attendance):
+	"""Re-run save-path deduction over one submitted row and write the result.
+
+	Reposts the ledger from scratch instead of adjusting it: the row's own
+	entries are deleted first, which is also what makes _leave_balance read
+	the balance this day started from, so the recompute sees the same state a
+	first save would.
+	"""
+	cancel_leave_ledger(attendance)
+
+	# apply_buffer_logic first, in the order the save hooks run it: it rebuilds
+	# custom_base_hours from the punches, and apply_deduction subtracts from
+	# that. Without the rebuild a second resync would subtract twice.
+	apply_buffer_logic(attendance)
+	apply_deduction(attendance)
+
+	frappe.db.set_value(
+		"Attendance",
+		attendance.name,
+		{f: attendance.get(f) for f in _RESYNC_FIELDS},
+		update_modified=False,
+	)
+
+	frappe.db.delete("Attendance Deduction Entry", {"parent": attendance.name})
+	for idx, breakup in enumerate(attendance.get("custom_deduction_breakup") or [], 1):
+		breakup.parent = attendance.name
+		breakup.parenttype = "Attendance"
+		breakup.parentfield = "custom_deduction_breakup"
+		breakup.idx = idx
+		breakup.db_insert()
+
+	post_leave_ledger(attendance)
+
+
 def cancel_leave_ledger(doc, method=None):
 	"""Delete this row's ledger entries, as hrms does for a Leave Application.
 
@@ -179,11 +281,19 @@ def _resolve_policy(doc, shift):
 		"employee_grade": employee.get("grade"),
 	}
 
+	# One query for the whole candidate set; an empty table means every shift.
+	pinned = pinned_shifts(POLICY_DOCTYPE, [row.name for row in candidates])
+
 	matches = []
 	for row in candidates:
+		shifts = pinned.get(row.name)
+		if shifts and actual["shift_type"] not in shifts:
+			continue
 		if any(row.get(f) and row.get(f) != actual.get(f) for f in SCOPE_FIELDS):
 			continue
-		specificity = sum(1 for f in SCOPE_FIELDS if row.get(f))
+		# A pinned shift list counts toward specificity the way the old single
+		# Link did, so a shift rule still beats a company-wide one.
+		specificity = sum(1 for f in SCOPE_FIELDS if row.get(f)) + (1 if shifts else 0)
 		matches.append((cint(row.priority), specificity, row.name))
 
 	if not matches:

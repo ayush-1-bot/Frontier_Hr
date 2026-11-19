@@ -17,9 +17,13 @@
   "department",
   "column_break_scope",
   "shift_type",
+  "shift_types",
   "employee_grade",
   "credit_section",
   "credits",
+  "credit_holidays",
+  "credit_weekly_offs",
+  "credit_paid_leave_only",
   "earn_section",
   "days_required",
   "leaves_granted",
@@ -87,10 +91,20 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "Replaced by Shift Types. Folded into it on the next save.",
    "fieldname": "shift_type",
    "fieldtype": "Link",
-   "label": "Shift Type",
-   "options": "Shift Type"
+   "hidden": 1,
+   "label": "Shift Type (Deprecated)",
+   "options": "Shift Type",
+   "read_only": 1
+  },
+  {
+   "description": "Shifts this policy applies to. Leave empty for every shift.",
+   "fieldname": "shift_types",
+   "fieldtype": "Table MultiSelect",
+   "label": "Shift Types",
+   "options": "Attendance Policy Shift"
   },
   {
    "fieldname": "employee_grade",
@@ -110,6 +124,27 @@
    "label": "Credit per Attendance Status",
    "options": "Attendance Accrual Credit",
    "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "Credit public holidays that have no attendance.",
+   "fieldname": "credit_holidays",
+   "fieldtype": "Check",
+   "label": "Count Holidays"
+  },
+  {
+   "default": "1",
+   "description": "Credit weekly offs that have no attendance.",
+   "fieldname": "credit_weekly_offs",
+   "fieldtype": "Check",
+   "label": "Count Weekly Offs"
+  },
+  {
+   "default": "1",
+   "description": "An On Leave day earns credit only when its leave type is paid. Leave Without Pay earns nothing.",
+   "fieldname": "credit_paid_leave_only",
+   "fieldtype": "Check",
+   "label": "Paid Leave Only"
   },
   {
    "fieldname": "earn_section",
@@ -224,9 +259,15 @@
    "write": 1
   },
   {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
    "read": 1,
    "report": 1,
-   "role": "HR User"
+   "role": "HR User",
+   "share": 1,
+   "write": 1
   }
  ],
  "sort_field": "modified",

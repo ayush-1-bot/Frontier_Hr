@@ -21,9 +21,10 @@ the cancellation drops the counter back below the threshold.
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, flt, get_first_day, get_last_day, getdate
+from frappe.utils import add_days, cint, date_diff, flt, get_first_day, get_last_day, getdate
 
 from frontier_hr.overtime_extension.overrides.attendance import _get_shift_settings
+from frontier_hr.policy_scope import pinned_shifts
 
 POLICY_DOCTYPE = "Attendance Leave Accrual Policy"
 GRANT_LOG = "Attendance Leave Grant Log"
@@ -48,6 +49,48 @@ def accrue_on_submit(doc, method=None):
 
 	_apply_credit(doc, policy, credit - already)
 	doc.db_set("custom_accrual_credit_days", credit, update_modified=False)
+
+
+def resync_attendance_range(doc, method=None):
+	"""Re-credit every Attendance day a leave or attendance request touched.
+
+	hrms changes a SUBMITTED Attendance behind the ORM in three places, none of
+	which run a hook, so the accrual counter never hears about it:
+
+	  AttendanceRequest.create_or_update_attendance
+	      db_set("status", ...)            Half Day -> Present
+	  LeaveApplication.create_or_update_attendance
+	      db_set("status", ...)            Half Day / Absent -> On Leave
+	  LeaveApplication.cancel_attendance
+	      set_value("docstatus", 2)        a cancel that fires no on_cancel
+
+	The last one is the worst: the row is cancelled in raw SQL, so
+	reverse_on_cancel never runs and the day keeps credit it no longer earns.
+
+	Both doctypes carry employee / from_date / to_date, so one pass serves
+	both. Every branch is delta-based, so running this twice changes nothing.
+	"""
+	if not (doc.get("employee") and doc.get("from_date") and doc.get("to_date")):
+		return
+
+	rows = frappe.get_all(
+		"Attendance",
+		filters={
+			"employee": doc.employee,
+			"attendance_date": ["between", [doc.from_date, doc.to_date]],
+		},
+		fields=["name", "docstatus"],
+	)
+
+	for row in rows:
+		attendance = frappe.get_doc("Attendance", row.name)
+		if row.docstatus == 2:
+			# Cancelled, possibly by that raw SQL flip. Give back whatever the
+			# row still carries; reverse_on_cancel is a no-op at credit 0, so a
+			# row cancelled through the normal path is not reversed twice.
+			reverse_on_cancel(attendance)
+		elif row.docstatus == 1:
+			accrue_on_submit(attendance)
 
 
 def reverse_on_cancel(doc, method=None):
@@ -101,16 +144,25 @@ def _earned_in_period(employee, policy, period):
 	change, and a wiped total silently disables both the per-period cap and the
 	claw-back guard, leaving granted leave that nothing can take back.
 	"""
+	# Matched on the stored period, NOT on the month of grant_date. The counter
+	# only ever moves forward, so a backfill crediting an older day charges the
+	# grant to the newer period it is standing in -- and grant_date, which is
+	# that older attendance date, then falls in the wrong month.
+	# `period` was added later; rows without it fall back to the old rule.
 	total = frappe.db.sql(
 		"""
 		SELECT SUM(leaves_granted) FROM `tabAttendance Leave Grant Log`
 		WHERE employee = %(employee)s AND policy = %(policy)s {period_clause}
 		""".format(
 			period_clause=(
-				"AND grant_date LIKE %(like)s" if policy.reset_period != "Never" else ""
+				"""AND (period = %(period)s
+				        OR (COALESCE(period, '') = '' AND grant_date LIKE %(like)s))"""
+				if policy.reset_period != "Never"
+				else ""
 			)
 		),
-		{"employee": employee, "policy": policy.name, "like": f"{period}-%"},
+		{"employee": employee, "policy": policy.name, "period": period,
+		 "like": f"{period}-%"},
 	)[0][0]
 	return flt(total)
 
@@ -180,6 +232,7 @@ def _grant(doc, policy, employee, leaves, counter_before, counter_after, period)
 			"employee": employee.name,
 			"employee_name": employee.employee_name,
 			"grant_date": doc.attendance_date,
+			"period": period,
 			"policy": policy.name,
 			"leave_type": policy.leave_type,
 			"leaves_granted": flt(leaves, 3),
@@ -252,14 +305,41 @@ def _create_allocation(employee, policy, date, leaves):
 # Policy and credit
 # ---------------------------------------------------------------------------
 
+def _leave_is_paid(doc):
+	"""True when the day's leave type is paid.
+
+	No leave type means no leave, which is also not paid leave — the Half Day
+	bonus below depends on that reading.
+	"""
+	leave_type = doc.get("leave_type")
+	if not leave_type:
+		return False
+	return not cint(frappe.db.get_value("Leave Type", leave_type, "is_lwp"))
+
+
 def _credit_for(doc, policy):
 	"""Days this Attendance earns, from the policy's table."""
+	# Work From Home has its own row in the credit table, so it needs no
+	# switch of its own: set that row to 1 to rate it as a full present day.
 	status = doc.get("status")
+
+	# Leave Without Pay buys no leave: the employee was neither at work nor
+	# being paid for the day, so it cannot count toward earning time off.
+	unpaid = cint(policy.credit_paid_leave_only) and not _leave_is_paid(doc)
+	if status == "On Leave" and unpaid:
+		return 0.0
+
 	for row in policy.credits:
 		if row.attendance_status != status:
 			continue
-		if status == "Half Day" and doc.get("half_day_status") == "Present" and flt(row.half_day_credit):
+		if (
+			status == "Half Day"
+			and doc.get("half_day_status") == "Present"
+			and flt(row.half_day_credit)
+			and not unpaid
+		):
 			# The other half was paid leave, which the policy may rate higher.
+			# Unpaid, it earns the plain half day rate instead.
 			return flt(row.half_day_credit)
 		return flt(row.credit)
 	return 0.0
@@ -290,11 +370,20 @@ def _resolve_policy(doc):
 		"employee_grade": employee.get("grade"),
 	}
 
+	# One query for the whole candidate set; an empty table means every shift.
+	pinned = pinned_shifts(POLICY_DOCTYPE, [row.name for row in candidates])
+
 	matches = []
 	for row in candidates:
+		shifts = pinned.get(row.name)
+		if shifts and actual["shift_type"] not in shifts:
+			continue
 		if any(row.get(f) and row.get(f) != actual.get(f) for f in SCOPE_FIELDS):
 			continue
-		matches.append((int(row.priority or 0), sum(1 for f in SCOPE_FIELDS if row.get(f)), row.name))
+		# A pinned shift list counts toward specificity the way the old single
+		# Link did, so a shift rule still beats a company-wide one.
+		specificity = sum(1 for f in SCOPE_FIELDS if row.get(f)) + (1 if shifts else 0)
+		matches.append((int(row.priority or 0), specificity, row.name))
 
 	if not matches:
 		return None

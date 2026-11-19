@@ -10,6 +10,7 @@
   "employee",
   "employee_name",
   "grant_date",
+  "period",
   "column_break_head",
   "policy",
   "leave_type",
@@ -48,6 +49,13 @@
    "label": "Grant Date",
    "reqd": 1,
    "search_index": 1
+  },
+  {
+   "description": "Counter period this grant was charged to.",
+   "fieldname": "period",
+   "fieldtype": "Data",
+   "label": "Counter Period",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_head",
@@ -151,9 +159,13 @@
    "share": 1
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
    "read": 1,
    "report": 1,
-   "role": "HR User"
+   "role": "HR User",
+   "share": 1
   }
  ],
  "sort_field": "creation",

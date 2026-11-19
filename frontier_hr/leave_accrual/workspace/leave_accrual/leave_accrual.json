@@ -1,0 +1,109 @@
+{
+ "app": "frontier_hr",
+ "charts": [],
+ "content": "[{\"id\":\"laHeader001\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Leave Accrual</b></span>\",\"col\":12}},{\"id\":\"laShortcut1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Accrual Policy\",\"col\":3}},{\"id\":\"laShortcut2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Grant Log\",\"col\":3}},{\"id\":\"laShortcut3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Leave Allocation\",\"col\":3}},{\"id\":\"laSpacer001\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"laCard000001\",\"type\":\"card\",\"data\":{\"card_name\":\"Setup\",\"col\":4}},{\"id\":\"laCard000002\",\"type\":\"card\",\"data\":{\"card_name\":\"Records\",\"col\":4}}]",
+ "creation": "2026-11-19 10:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "calendar",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Leave Accrual",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Setup",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Attendance Leave Accrual Policy",
+   "link_count": 0,
+   "link_to": "Attendance Leave Accrual Policy",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Records",
+   "link_count": 3,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Attendance Leave Grant Log",
+   "link_count": 0,
+   "link_to": "Attendance Leave Grant Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Leave Allocation",
+   "link_count": 0,
+   "link_to": "Leave Allocation",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Leave Ledger Entry",
+   "link_count": 0,
+   "link_to": "Leave Ledger Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-11-19 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Leave Accrual",
+ "name": "Leave Accrual",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 21.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Accrual Policy",
+   "link_to": "Attendance Leave Accrual Policy",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Grant Log",
+   "link_to": "Attendance Leave Grant Log",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Leave Allocation",
+   "link_to": "Leave Allocation",
+   "type": "DocType"
+  }
+ ],
+ "title": "Leave Accrual",
+ "type": "Workspace"
+}

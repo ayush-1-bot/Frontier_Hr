@@ -6,9 +6,13 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from frontier_hr.policy_scope import dedupe_shifts, fold_legacy_shift
+
 
 class LateComingandEarlyOutDeductionPolicy(Document):
 	def validate(self):
+		fold_legacy_shift(self)
+		dedupe_shifts(self)
 		self.validate_slabs()
 		self.validate_priority()
 
