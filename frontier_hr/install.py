@@ -81,6 +81,10 @@ def fold_policy_shift_types():
 	for doctype in SHIFT_SCOPED_POLICIES:
 		if not frappe.db.exists("DocType", doctype):
 			continue
+		# A policy that has not been given the Shift Types table yet keeps its
+		# Link, which the resolver still reads. Nothing to fold into.
+		if not frappe.get_meta(doctype).has_field("shift_types"):
+			continue
 		for name in frappe.get_all(doctype, filters={"shift_type": ["is", "set"]}, pluck="name"):
 			policy = frappe.get_doc(doctype, name)
 			fold_legacy_shift(policy)
