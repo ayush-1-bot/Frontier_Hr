@@ -57,3 +57,10 @@ jspm_packages/
 # Throwaway diagnostic scripts
 frontier_hr/**/_diag*.py
 frontier_hr/**/_inspect.py
+
+# Self-checks and throwaway dev scripts. Kept on disk, out of the repo: they
+# are run by hand against a real site with `bench execute`, not by CI.
+frontier_hr/**/test_*.py
+frontier_hr/**/_setup_*.py
+frontier_hr/**/_seed_*.py
+frontier_hr/**/_report_*.py
