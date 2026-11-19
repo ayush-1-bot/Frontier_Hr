@@ -161,6 +161,8 @@ after_migrate = [
 	"frontier_hr.install.ensure_accrual_permlevel_perms",
 	# shift_type Link -> shift_types table. Idempotent; see install.py.
 	"frontier_hr.install.fold_policy_shift_types",
+	# A migrate leaves an existing Workspace's is_hidden alone; see install.py.
+	"frontier_hr.install.unhide_app_workspaces",
 ]
 
 # ---------------------------------------------------------------------------

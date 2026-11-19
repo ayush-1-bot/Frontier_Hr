@@ -91,3 +91,21 @@ def fold_policy_shift_types():
 			# save(), not db_set: the table row has to be inserted as a child.
 			policy.flags.ignore_permissions = True
 			policy.save()
+
+
+# Workspaces that must be visible to HR, by name.
+APP_WORKSPACES = ("Leave Accrual", "Deduction Policy")
+
+
+def unhide_app_workspaces():
+	"""Clear is_hidden on this app's workspaces.
+
+	A migrate does not push is_hidden back onto a Workspace that already
+	exists, so a site that installed one while it was hidden keeps it hidden
+	however the shipped JSON changes. Their roles table is empty, so once they
+	are visible, who sees them follows the doctype read permission.
+	"""
+	for name in APP_WORKSPACES:
+		if frappe.db.exists("Workspace", name) and frappe.db.get_value("Workspace", name, "is_hidden"):
+			frappe.db.set_value("Workspace", name, "is_hidden", 0, update_modified=False)
+	frappe.clear_cache()

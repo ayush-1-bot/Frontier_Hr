@@ -10,7 +10,7 @@
  "hide_custom": 0,
  "icon": "clock",
  "idx": 0,
- "is_hidden": 1,
+ "is_hidden": 0,
  "label": "Deduction Policy",
  "links": [
   {
@@ -40,13 +40,13 @@
    "type": "Card Break"
   },
   {
+   "dependencies": "Attendance",
    "hidden": 0,
    "is_query_report": 1,
    "label": "Late Coming and Early Out Deduction",
    "link_count": 0,
    "link_to": "Late Coming and Early Out Deduction",
    "link_type": "Report",
-   "dependencies": "Attendance",
    "onboard": 0,
    "type": "Link"
   },
@@ -85,8 +85,8 @@
    "doc_view": "",
    "label": "Deduction Report",
    "link_to": "Late Coming and Early Out Deduction",
-   "type": "Report",
-   "report_ref_doctype": "Attendance"
+   "report_ref_doctype": "Attendance",
+   "type": "Report"
   }
  ],
  "title": "Deduction Policy",
