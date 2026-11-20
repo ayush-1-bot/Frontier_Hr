@@ -127,6 +127,21 @@ def units_for(policy, hours):
 	return flt(hours) / per_unit if per_unit else 0.0
 
 
+# Roles trusted to look at someone else's quota.
+HR_ROLES = {"HR Manager", "HR User", "System Manager"}
+
+
+def _check_read_permission(employee):
+	"""Whitelisted, so this is reachable by anyone with a session. Without the
+	check an employee could read any colleague's quota by passing their id."""
+	if frappe.session.user == "Administrator" or HR_ROLES & set(frappe.get_roles()):
+		return
+	own = frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "name")
+	if employee != own:
+		frappe.throw(_("Not permitted to read another employee's short leave balance."),
+		             frappe.PermissionError)
+
+
 @frappe.whitelist()
 def get_balance(employee, date=None, policy=None, ignore_request=None):
 	"""What is left of this employee's quota in the period `date` falls in.
@@ -134,6 +149,8 @@ def get_balance(employee, date=None, policy=None, ignore_request=None):
 	Only SUBMITTED requests count. A draft reserves nothing, and the balance is
 	re-checked on submit, so two drafts cannot both slip through.
 	"""
+	_check_read_permission(employee)
+
 	date = getdate(date) if date else getdate(frappe.utils.today())
 	policy = policy or resolve_policy(employee, date)
 	if not policy:

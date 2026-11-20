@@ -1,0 +1,38 @@
+diff --git a/frontend/src/router/leaves.js b/frontend/src/router/leaves.js
+index 22d34e2ff..6b2c5dd55 100644
+--- a/frontend/src/router/leaves.js
++++ b/frontend/src/router/leaves.js
+@@ -15,6 +15,17 @@ const routes = [
+ 		props: true,
+ 		component: () => import("@/views/leave/CompensatoryLeaveRequestForm.vue"),
+ 	},
++	{
++		name: "ShortLeaveRequestFormView",
++		path: "/short-leave-requests/new",
++		component: () => import("@/views/leave/ShortLeaveRequestForm.vue"),
++	},
++	{
++		name: "ShortLeaveRequestDetailView",
++		path: "/short-leave-requests/:id",
++		props: true,
++		component: () => import("@/views/leave/ShortLeaveRequestForm.vue"),
++	},
+ 	{
+ 		name: "LeaveApplicationListView",
+ 		path: "/leave-applications",
+diff --git a/frontend/src/views/Home.vue b/frontend/src/views/Home.vue
+index f708bcafe..6e15b0bee 100644
+--- a/frontend/src/views/Home.vue
++++ b/frontend/src/views/Home.vue
+@@ -47,6 +47,11 @@ const quickLinks = [
+ 		title: __("Request Compensatory Leave"),
+ 		route: "CompensatoryLeaveRequestFormView",
+ 	},
++	{
++		icon: markRaw(LeaveIcon),
++		title: __("Request Short Leave"),
++		route: "ShortLeaveRequestFormView",
++	},
+ 	{
+ 		icon: markRaw(ExpenseIcon),
+ 		title: __("Claim an Expense"),
