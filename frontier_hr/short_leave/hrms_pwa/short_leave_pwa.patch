@@ -23,6 +23,91 @@ index e4b13ae79..979c88417 100644
  		<!-- Datetime -->
  		<DateTimePicker
  			v-else-if="props.fieldtype === 'Datetime'"
+diff --git a/frontend/src/components/RequestList.vue b/frontend/src/components/RequestList.vue
+index bc0f79ae3..fefc96e8f 100644
+--- a/frontend/src/components/RequestList.vue
++++ b/frontend/src/components/RequestList.vue
+@@ -55,6 +55,7 @@ import {
+ 	ATTENDANCE_REQUEST_FIELDS,
+ 	SHIFT_REQUEST_FIELDS,
+ 	SHIFT_FIELDS,
++	SHORT_LEAVE_FIELDS,
+ } from "@/data/config/requestSummaryFields"
+ 
+ const __ = inject("$translate")
+@@ -89,6 +90,7 @@ const fieldsMap = {
+ 	"Attendance Request": ATTENDANCE_REQUEST_FIELDS,
+ 	"Shift Request": SHIFT_REQUEST_FIELDS,
+ 	"Shift Assignment": SHIFT_FIELDS,
++	"Short Leave Request": SHORT_LEAVE_FIELDS,
+ }
+ 
+ const isRequestModalOpen = ref(false)
+diff --git a/frontend/src/components/RequestPanel.vue b/frontend/src/components/RequestPanel.vue
+index 2d8f6c3d3..7cc257d19 100644
+--- a/frontend/src/components/RequestPanel.vue
++++ b/frontend/src/components/RequestPanel.vue
+@@ -22,11 +22,13 @@ import RequestList from "@/components/RequestList.vue"
+ import { myAttendanceRequests, myShiftRequests, teamShiftRequests, teamAttendanceRequests } from "@/data/attendance"
+ import { myClaims, teamClaims } from "@/data/claims"
+ import { myLeaves, teamLeaves } from "@/data/leaves"
++import { myShortLeaveRequests } from "@/data/shortLeave"
+ 
+ import AttendanceRequestItem from "@/components/AttendanceRequestItem.vue"
+ import ExpenseClaimItem from "@/components/ExpenseClaimItem.vue"
+ import LeaveRequestItem from "@/components/LeaveRequestItem.vue"
+ import ShiftRequestItem from "@/components/ShiftRequestItem.vue"
++import ShortLeaveRequestItem from "@/components/ShortLeaveRequestItem.vue"
+ 
+ import { useListUpdate } from "@/composables/realtime"
+ 
+@@ -36,15 +38,17 @@ const socket = inject("$socket")
+ const TAB_BUTTONS = ["My Requests", "Team Requests"] // __("My Requests"), __("Team Requests")
+ 
+ const myRequests = computed(() =>
+-	updateRequestDetails(myLeaves, myClaims, myShiftRequests, myAttendanceRequests)
++	// Short leave is own-requests only: there is no team feed for it, since
++	// the API answers for the caller alone unless they are HR.
++	updateRequestDetails(myLeaves, myClaims, myShiftRequests, myAttendanceRequests, myShortLeaveRequests)
+ )
+ 
+ const teamRequests = computed(() =>
+ 	updateRequestDetails(teamLeaves, teamClaims, teamShiftRequests, teamAttendanceRequests)
+ )
+ 
+-function updateRequestDetails(leaves, claims, shiftRequests, attendanceRequests) {
+-	const requests = [leaves, claims, shiftRequests, attendanceRequests].reduce(
++function updateRequestDetails(leaves, claims, shiftRequests, attendanceRequests, shortLeaves) {
++	const requests = [leaves, claims, shiftRequests, attendanceRequests, shortLeaves].reduce(
+ 		(acc, resource) => acc.concat(resource?.data || []),
+ 		[]
+ 	)
+@@ -54,6 +58,7 @@ function updateRequestDetails(leaves, claims, shiftRequests, attendanceRequests)
+ 		"Expense Claim": ExpenseClaimItem,
+ 		"Shift Request": ShiftRequestItem,
+ 		"Attendance Request": AttendanceRequestItem,
++		"Short Leave Request": ShortLeaveRequestItem,
+ 	}
+ 	requests.forEach((request) => {
+ 		request.component = markRaw(componentMap[request.doctype])
+diff --git a/frontend/src/data/config/requestSummaryFields.js b/frontend/src/data/config/requestSummaryFields.js
+index d1fd4fdd9..73ed6142a 100644
+--- a/frontend/src/data/config/requestSummaryFields.js
++++ b/frontend/src/data/config/requestSummaryFields.js
+@@ -259,3 +259,13 @@ export const EMPLOYEE_CHECKIN_FIELDS = [
+ 		fieldtype: "geolocation",
+ 	},
+ ]
++
++export const SHORT_LEAVE_FIELDS = [
++	{ fieldname: "name", label: "ID", fieldtype: "Data" },
++	{ fieldname: "date", label: "Date", fieldtype: "Date" },
++	{ fieldname: "from_time", label: "From Time", fieldtype: "Data" },
++	{ fieldname: "to_time", label: "To Time", fieldtype: "Data" },
++	{ fieldname: "hours", label: "Hours", fieldtype: "Data" },
++	{ fieldname: "units_consumed", label: "Short Leaves Used", fieldtype: "Data" },
++	{ fieldname: "reason", label: "Reason", fieldtype: "Small Text" },
++]
 diff --git a/frontend/src/router/leaves.js b/frontend/src/router/leaves.js
 index 22d34e2ff..6b2c5dd55 100644
 --- a/frontend/src/router/leaves.js

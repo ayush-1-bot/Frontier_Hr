@@ -183,6 +183,27 @@ def get_balance(employee, date=None, policy=None, ignore_request=None):
 	)
 
 
+@frappe.whitelist()
+def get_requests(employee, limit=10):
+	"""This employee's own short leaves, newest first.
+
+	Feeds the mobile app's My Requests list, which hrms builds by calling one
+	API per doctype. Same permission rule as the balance: your own, unless HR.
+	"""
+	_check_read_permission(employee)
+
+	return frappe.get_all(
+		REQUEST_DOCTYPE,
+		filters={"employee": employee, "docstatus": ["<", 2]},
+		fields=[
+			"name", "employee", "employee_name", "date", "from_time", "to_time",
+			"hours", "units_consumed", "reason", "policy", "docstatus", "creation",
+		],
+		order_by="creation desc",
+		limit=cint(limit) or 10,
+	)
+
+
 def approved_requests(employee, date):
 	"""Submitted short leaves for one employee on one day."""
 	return frappe.get_all(

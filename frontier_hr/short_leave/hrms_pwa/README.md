@@ -12,9 +12,11 @@ them**. They are kept here so they can be put back in one step.
 
 ```bash
 cd apps/hrms
-cp ../frontier_hr/frontier_hr/short_leave/hrms_pwa/ShortLeaveRequestForm.vue \
-   frontend/src/views/leave/ShortLeaveRequestForm.vue
-git apply ../frontier_hr/frontier_hr/short_leave/hrms_pwa/short_leave_pwa.patch
+PWA=../frontier_hr/frontier_hr/short_leave/hrms_pwa
+cp $PWA/ShortLeaveRequestForm.vue  frontend/src/views/leave/
+cp $PWA/ShortLeaveRequestItem.vue  frontend/src/components/
+cp $PWA/shortLeave.js              frontend/src/data/
+git apply $PWA/short_leave_pwa.patch
 yarn build-pwa
 ```
 
@@ -34,11 +36,21 @@ hand — they are small:
   no "time" in it, renders nothing, and only warns on the console. Drop this
   hunk if a later hrms implements the fieldtype itself.
 
+- `frontend/src/components/RequestPanel.vue` and `RequestList.vue`, plus
+  `frontend/src/data/config/requestSummaryFields.js` — put short leave in the
+  Home screen's **My Requests** list. That list is a hardcoded set of four
+  doctypes with no extension point, so the resource, the row component and the
+  tap-through field list all have to be registered by hand. There is no Team
+  Requests feed: `get_requests` answers for the caller alone unless they are HR.
+
 Then refresh the patch for next time:
 
 ```bash
 cd apps/hrms
 git diff -- frontend/src/router/leaves.js frontend/src/views/Home.vue \
+    frontend/src/components/FormField.vue frontend/src/components/RequestList.vue \
+    frontend/src/components/RequestPanel.vue \
+    frontend/src/data/config/requestSummaryFields.js \
   > ../frontier_hr/frontier_hr/short_leave/hrms_pwa/short_leave_pwa.patch
 ```
 
