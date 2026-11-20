@@ -1,0 +1,88 @@
+{
+ "app": "frontier_hr",
+ "charts": [],
+ "content": "[{\"id\": \"slHeader001\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Short Leave</b></span>\", \"col\": 12}}, {\"id\": \"slShortcut1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Short Leave Request\", \"col\": 3}}, {\"id\": \"slShortcut2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Short Leave Policy\", \"col\": 3}}, {\"id\": \"slSpacer001\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"slCard000001\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}, {\"id\": \"slCard000002\", \"type\": \"card\", \"data\": {\"card_name\": \"Records\", \"col\": 4}}]",
+ "creation": "2026-11-20 10:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "clock",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Short Leave",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Setup",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Short Leave Policy",
+   "link_count": 0,
+   "link_to": "Short Leave Policy",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Records",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Short Leave Request",
+   "link_count": 0,
+   "link_to": "Short Leave Request",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Attendance",
+   "link_count": 0,
+   "link_to": "Attendance",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-11-20 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Short Leave",
+ "name": "Short Leave",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 22.0,
+ "shortcuts": [
+  {
+   "label": "Short Leave Request",
+   "link_to": "Short Leave Request",
+   "type": "DocType"
+  },
+  {
+   "label": "Short Leave Policy",
+   "link_to": "Short Leave Policy",
+   "type": "DocType"
+  }
+ ],
+ "title": "Short Leave",
+ "type": "Workspace"
+}

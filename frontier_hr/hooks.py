@@ -29,12 +29,17 @@ doc_events = {
 	# subtracts from the custom_base_hours that pass writes, and the base pass
 	# rebuilds that field from the punches on every save.
 	"Attendance": {
+		# credit_short_leave_hours sits BETWEEN them: the buffer pass rebuilds
+		# custom_base_hours from the punches, the short leave adds back the
+		# hours it paid for, and the deduction then takes from what is left.
 		"before_save": [
 			"frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
+			"frontier_hr.short_leave.overrides.attendance.credit_paid_hours",
 			"frontier_hr.deduction_policy.overrides.attendance.apply_deduction",
 		],
 		"before_submit": [
 			"frontier_hr.overtime_extension.overrides.attendance.apply_buffer_logic",
+			"frontier_hr.short_leave.overrides.attendance.credit_paid_hours",
 			"frontier_hr.deduction_policy.overrides.attendance.apply_deduction",
 		],
 		# Leave reserved during the save is only debited once the day is final.
@@ -272,6 +277,8 @@ fixtures = [
 					"custom_deducted_leave_days",
 					"custom_deducted_hours",
 					"custom_deduction_breakup",
+					# Attendance — hours covered by a short leave (short_leave/)
+					"custom_short_leave_hours",
 					# Employee — exempt from punching (vip_attendance/)
 					"custom_exempt_from_attendance",
 					# Attendance / Employee — leave accrual (leave_accrual/)

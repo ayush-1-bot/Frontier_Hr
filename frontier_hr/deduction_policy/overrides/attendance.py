@@ -62,6 +62,13 @@ def apply_deduction(doc, method=None):
 	# Grace is a quota, not a daily tolerance — see _grace_for.
 	late_raw = _late_minutes(doc, shift, policy, grace=0)
 	early_raw = _early_minutes(doc, shift, policy, grace=0)
+
+	# An approved Short Leave Request is permission to miss those minutes, so
+	# they are taken off BEFORE the grace and the ranges are applied. Charging
+	# them would punish an approved absence exactly like an unapproved one, and
+	# the employee would pay for it twice -- once in quota, once in pay.
+	late_raw, early_raw = _less_short_leave(doc, shift, late_raw, early_raw)
+
 	doc.custom_late_coming_raw_minutes = late_raw
 	doc.custom_early_out_raw_minutes = early_raw
 
@@ -316,6 +323,21 @@ def _shift_window(doc, shift):
 		# Night shift: the row is dated to the day the shift starts.
 		end += timedelta(days=1)
 	return start, end
+
+
+def _less_short_leave(doc, shift, late, early):
+	"""Late and early minutes with any approved short leave taken off."""
+	from frontier_hr.short_leave.overrides.attendance import excused_split
+
+	if not (late or early):
+		return late, early
+
+	start, end = _shift_window(doc, shift)
+	excused_late, excused_early = excused_split(
+		doc, start, end, get_datetime(doc.in_time) if doc.get("in_time") else None,
+		get_datetime(doc.out_time) if doc.get("out_time") else None,
+	)
+	return max(late - int(excused_late), 0), max(early - int(excused_early), 0)
 
 
 def _late_minutes(doc, shift, policy, grace=None):

@@ -94,7 +94,7 @@ def fold_policy_shift_types():
 
 
 # Workspaces that must be visible to HR, by name.
-APP_WORKSPACES = ("Leave Accrual", "Deduction Policy")
+APP_WORKSPACES = ("Leave Accrual", "Deduction Policy", "Short Leave")
 
 
 def unhide_app_workspaces():
