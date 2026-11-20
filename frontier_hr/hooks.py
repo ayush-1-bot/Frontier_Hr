@@ -178,6 +178,8 @@ doctype_js = {
 	# Additive to hrms core's shift_type.js — adds the "Fix Delayed Sync
 	# Attendance" button. Server side is whitelisted methods only, no hooks.
 	"Shift Type": "delayed_attendance_fix/client_scripts/shift_type.js",
+	# Defaults the employee to whoever is filing, and shows the quota left.
+	"Short Leave Request": "short_leave/client_scripts/short_leave_request.js",
 }
 
 # ---------------------------------------------------------------------------

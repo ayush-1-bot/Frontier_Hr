@@ -12,8 +12,12 @@ from frontier_hr.short_leave.api import get_balance, resolve_policy, units_for
 
 
 class ShortLeaveRequest(Document):
+	# Roles trusted to file on someone else's behalf.
+	HR_ROLES = {"HR Manager", "HR User", "System Manager"}
+
 	def validate(self):
 		self.validate_employee()
+		self.validate_own_request()
 		self.set_policy()
 		self.set_hours()
 		self.validate_against_policy()
@@ -41,6 +45,25 @@ class ShortLeaveRequest(Document):
 		from hrms.hr.utils import validate_active_employee
 
 		validate_active_employee(self.employee)
+
+	def validate_own_request(self):
+		"""An employee may only file for themselves.
+
+		The Employee link lists every employee and the doctype is readable
+		if_owner, so without this anyone with the Employee role could spend a
+		colleague's quota -- and the colleague would never see the request.
+		"""
+		if frappe.session.user == "Administrator":
+			return
+		if self.HR_ROLES & set(frappe.get_roles()):
+			return
+
+		own = frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "name")
+		if not own:
+			frappe.throw(_("No active Employee record is linked to your user."))
+		if self.employee != own:
+			frappe.throw(_("You can only request a short leave for yourself."))
+
 
 	def set_policy(self):
 		policy = resolve_policy(self.employee, self.date)
