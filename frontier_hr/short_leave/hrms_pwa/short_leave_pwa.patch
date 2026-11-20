@@ -1,3 +1,25 @@
+diff --git a/frontend/src/components/FormField.vue b/frontend/src/components/FormField.vue
+index e4b13ae79..44258f0c7 100644
+--- a/frontend/src/components/FormField.vue
++++ b/frontend/src/components/FormField.vue
+@@ -134,6 +134,17 @@
+ 		/>
+ 
+ 		<!-- Time -->
++		<Input
++			v-else-if="props.fieldtype === 'Time'"
++			type="time"
++			:value="modelValue"
++			:placeholder="__('Select {0}', [props.label])"
++			@input="(v) => emit('update:modelValue', v)"
++			@change="(v) => emit('change', v)"
++			v-bind="$attrs"
++			:disabled="isReadOnly"
++		/>
++
+ 		<!-- Datetime -->
+ 		<DateTimePicker
+ 			v-else-if="props.fieldtype === 'Datetime'"
 diff --git a/frontend/src/router/leaves.js b/frontend/src/router/leaves.js
 index 22d34e2ff..6b2c5dd55 100644
 --- a/frontend/src/router/leaves.js

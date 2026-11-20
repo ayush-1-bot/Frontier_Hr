@@ -26,6 +26,10 @@ hand — they are small:
   (`/short-leave-requests/:id`), both rendering `ShortLeaveRequestForm.vue`.
 - `frontend/src/views/Home.vue` — one more entry in `quickLinks`, pointing at
   `ShortLeaveRequestFormView`.
+- `frontend/src/components/FormField.vue` — a `Time` branch rendering
+  `<Input type="time">`. hrms never implemented the Time fieldtype: it left a
+  `<!-- Time -->` comment with nothing under it, so a Time field drew its
+  label and no input at all. Drop this hunk if a later hrms implements it.
 
 Then refresh the patch for next time:
 
