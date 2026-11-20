@@ -219,12 +219,18 @@ def _grant(doc, policy, employee, leaves, counter_before, counter_after, period)
 
 	if allocation:
 		_top_up(allocation, leaves, date)
-	else:
+	elif cint(policy.create_allocation_if_missing):
 		# hrms refuses an allocation of zero, so a first grant has to create it
 		# with the leaves already on it rather than topping up an empty one.
+		# That first grant IS the allocation's opening balance.
 		allocation = _create_allocation(employee.name, policy, date, leaves)
 		if not allocation:
 			return False
+	else:
+		# HR allocates by hand here. Returning False leaves the days on the
+		# counter, so the leave is granted the moment an allocation covering
+		# the day exists -- nothing is lost in the meantime.
+		return False
 
 	frappe.get_doc(
 		{

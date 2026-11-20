@@ -29,6 +29,7 @@
   "leaves_granted",
   "column_break_earn",
   "leave_type",
+  "create_allocation_if_missing",
   "max_leaves_per_period",
   "reset_section",
   "reset_period",
@@ -182,6 +183,13 @@
    "label": "Leave Type",
    "options": "Leave Type",
    "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "The first completed cycle opens a Leave Allocation for the year with the granted leaves as its opening balance. Untick to make HR allocate by hand; the counter keeps the days until they do.",
+   "fieldname": "create_allocation_if_missing",
+   "fieldtype": "Check",
+   "label": "Open an Allocation if the Employee Has None"
   },
   {
    "default": "0",
