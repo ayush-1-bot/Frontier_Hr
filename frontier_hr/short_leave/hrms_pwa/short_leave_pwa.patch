@@ -1,20 +1,23 @@
 diff --git a/frontend/src/components/FormField.vue b/frontend/src/components/FormField.vue
-index e4b13ae79..44258f0c7 100644
+index e4b13ae79..979c88417 100644
 --- a/frontend/src/components/FormField.vue
 +++ b/frontend/src/components/FormField.vue
-@@ -134,6 +134,17 @@
+@@ -134,6 +134,20 @@
  		/>
  
  		<!-- Time -->
-+		<Input
++		<!-- A native input, NOT frappe-ui's Input: that one validates `type`
++		     against a whitelist with no "time" in it, so it renders nothing
++		     at all and the field shows as a label over empty space. -->
++		<input
 +			v-else-if="props.fieldtype === 'Time'"
 +			type="time"
++			class="form-input block w-full"
 +			:value="modelValue"
-+			:placeholder="__('Select {0}', [props.label])"
-+			@input="(v) => emit('update:modelValue', v)"
-+			@change="(v) => emit('change', v)"
-+			v-bind="$attrs"
 +			:disabled="isReadOnly"
++			v-bind="$attrs"
++			@input="(e) => emit('update:modelValue', e.target.value)"
++			@change="(e) => emit('change', e.target.value)"
 +		/>
 +
  		<!-- Datetime -->

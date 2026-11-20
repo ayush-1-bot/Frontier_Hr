@@ -26,10 +26,13 @@ hand — they are small:
   (`/short-leave-requests/:id`), both rendering `ShortLeaveRequestForm.vue`.
 - `frontend/src/views/Home.vue` — one more entry in `quickLinks`, pointing at
   `ShortLeaveRequestFormView`.
-- `frontend/src/components/FormField.vue` — a `Time` branch rendering
-  `<Input type="time">`. hrms never implemented the Time fieldtype: it left a
-  `<!-- Time -->` comment with nothing under it, so a Time field drew its
-  label and no input at all. Drop this hunk if a later hrms implements it.
+- `frontend/src/components/FormField.vue` — a `Time` branch rendering a
+  **native** `<input type="time">`. hrms never implemented the Time fieldtype:
+  it left a `<!-- Time -->` comment with nothing under it, so a Time field drew
+  its label and no input at all. It has to be a native input, not frappe-ui's
+  `Input`: that component validates its `type` prop against a whitelist with
+  no "time" in it, renders nothing, and only warns on the console. Drop this
+  hunk if a later hrms implements the fieldtype itself.
 
 Then refresh the patch for next time:
 

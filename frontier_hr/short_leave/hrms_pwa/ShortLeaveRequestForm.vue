@@ -21,6 +21,7 @@
 <script setup>
 import { IonPage, IonContent } from "@ionic/vue"
 import { createResource } from "frappe-ui"
+import dayjs from "dayjs"
 import { computed, inject, ref, watch } from "vue"
 import FormView from "@/components/FormView.vue"
 
@@ -28,6 +29,9 @@ const props = defineProps({ id: String })
 const employee = inject("$employee")
 const __ = inject("$translate")
 const request = ref({})
+
+// Most short leaves are asked for on the day itself.
+if (!props.id) request.value.date = dayjs().format("YYYY-MM-DD")
 
 const formFields = createResource({
 	url: "hrms.api.get_doctype_fields",
