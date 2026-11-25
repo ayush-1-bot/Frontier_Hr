@@ -326,10 +326,18 @@ def _shift_window(doc, shift):
 
 
 def _less_short_leave(doc, shift, late, early):
-	"""Late and early minutes with any approved short leave taken off."""
-	from frontier_hr.short_leave.overrides.attendance import excused_split
+	"""Late and early minutes with any approved short leave taken off.
 
+	Short leave is a module of its own and a site may not carry it, so its
+	absence means there is simply nothing to excuse -- not a broken save on
+	every Attendance row.
+	"""
 	if not (late or early):
+		return late, early
+
+	try:
+		from frontier_hr.short_leave.overrides.attendance import excused_split
+	except ImportError:
 		return late, early
 
 	start, end = _shift_window(doc, shift)
