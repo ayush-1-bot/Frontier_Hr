@@ -96,16 +96,41 @@ def fold_policy_shift_types():
 # Workspaces that must be visible to HR, by name.
 APP_WORKSPACES = ("Leave Accrual", "Deduction Policy", "Short Leave")
 
+# Roles allowed to see them in the sidebar.
+WORKSPACE_ROLES = ("HR Manager", "HR User")
 
-def unhide_app_workspaces():
-	"""Clear is_hidden on this app's workspaces.
 
-	A migrate does not push is_hidden back onto a Workspace that already
-	exists, so a site that installed one while it was hidden keeps it hidden
-	however the shipped JSON changes. Their roles table is empty, so once they
-	are visible, who sees them follows the doctype read permission.
+def sync_app_workspaces():
+	"""Clear is_hidden and put the HR roles on this app's workspaces.
+
+	A migrate does not push either back onto a Workspace that already exists,
+	so a site that installed one while it was hidden, or before the roles were
+	named, keeps the old state however the shipped JSON changes.
+
+	A Workspace with roles is shown only to those roles. Anyone else keeps
+	every link in it -- the doctype permissions are what grant access; this
+	only decides whose sidebar it clutters.
 	"""
+	wanted = {role for role in WORKSPACE_ROLES if frappe.db.exists("Role", role)}
+
 	for name in APP_WORKSPACES:
-		if frappe.db.exists("Workspace", name) and frappe.db.get_value("Workspace", name, "is_hidden"):
-			frappe.db.set_value("Workspace", name, "is_hidden", 0, update_modified=False)
+		if not frappe.db.exists("Workspace", name):
+			continue
+
+		doc = frappe.get_doc("Workspace", name)
+		changed = False
+
+		if doc.is_hidden:
+			doc.is_hidden = 0
+			changed = True
+
+		if {row.role for row in doc.roles} != wanted:
+			doc.set("roles", [{"role": role} for role in sorted(wanted)])
+			changed = True
+
+		if changed:
+			# save(), not db_set: roles is a child table.
+			doc.flags.ignore_permissions = True
+			doc.save()
+
 	frappe.clear_cache()

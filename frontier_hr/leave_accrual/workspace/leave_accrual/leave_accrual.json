@@ -79,7 +79,20 @@
  "parent_page": "",
  "public": 1,
  "quick_lists": [],
- "roles": [],
+ "roles": [
+  {
+   "doctype": "Has Role",
+   "parentfield": "roles",
+   "parenttype": "Workspace",
+   "role": "HR Manager"
+  },
+  {
+   "doctype": "Has Role",
+   "parentfield": "roles",
+   "parenttype": "Workspace",
+   "role": "HR User"
+  }
+ ],
  "sequence_id": 21.0,
  "shortcuts": [
   {
