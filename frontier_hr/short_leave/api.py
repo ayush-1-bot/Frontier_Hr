@@ -14,6 +14,7 @@ means, with no scheduled job to run and nothing to go stale.
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, get_first_day, get_last_day, getdate
+from frappe.query_builder.functions import IfNull, Sum
 
 from frontier_hr.policy_scope import pinned_shifts
 
@@ -24,6 +25,10 @@ REQUEST_DOCTYPE = "Short Leave Request"
 SCOPE_FIELDS = ("employee_grade", "department", "branch")
 
 WHOLE_UNIT = "Whole Short Leave"
+
+# What the deduction writes in the Attendance breakup when it takes a short
+# leave by itself. Also the Deduct From option that asks it to.
+DEDUCTION_SOURCE = "Short Leave"
 
 
 def resolve_policy(employee, date, shift=None):
@@ -142,15 +147,53 @@ def _check_read_permission(employee):
 		             frappe.PermissionError)
 
 
-@frappe.whitelist()
-def get_balance(employee, date=None, policy=None, ignore_request=None):
+def auto_consumed(employee, start, end, ignore_attendance=None):
+	"""Units the deduction took off the quota without the employee applying.
+
+	A `Short Leave` row in a deduction policy spends quota straight from the
+	Attendance breakup instead of raising a request, so the breakup rows are
+	the record and have to be counted here -- otherwise the same short leave
+	could be spent twice, once by the deduction and once by a request.
+
+	Draft Attendance counts: the deduction reserves on save, like the leave
+	rows beside it. Report Only never counts, because it takes nothing.
+	"""
+	att = frappe.qb.DocType("Attendance")
+	row = frappe.qb.DocType("Attendance Deduction Entry")
+
+	query = (
+		frappe.qb.from_(row)
+		.join(att)
+		.on(row.parent == att.name)
+		.select(Sum(row.units))
+		.where(
+			(row.parenttype == "Attendance")
+			& (row.source == DEDUCTION_SOURCE)
+			& (att.employee == employee)
+			& (att.docstatus < 2)
+			& (IfNull(att.custom_deduction_report_only, 0) == 0)
+			& (att.attendance_date >= start)
+			& (att.attendance_date <= end)
+		)
+	)
+	if ignore_attendance:
+		# The row being recomputed must not read its own consumption, or every
+		# re-save would see the balance it had already spent and take less.
+		query = query.where(att.name != ignore_attendance)
+
+	return flt(query.run()[0][0])
+
+
+def balance(employee, date=None, policy=None, ignore_request=None, ignore_attendance=None):
 	"""What is left of this employee's quota in the period `date` falls in.
 
 	Only SUBMITTED requests count. A draft reserves nothing, and the balance is
 	re-checked on submit, so two drafts cannot both slip through.
-	"""
-	_check_read_permission(employee)
 
+	Unpermissioned on purpose: the Attendance deduction runs under whoever
+	saved the row, which is not necessarily someone allowed to read the
+	employee's quota. `get_balance` is the whitelisted way in.
+	"""
 	date = getdate(date) if date else getdate(frappe.utils.today())
 	policy = policy or resolve_policy(employee, date)
 	if not policy:
@@ -170,17 +213,29 @@ def get_balance(employee, date=None, policy=None, ignore_request=None):
 	)[0][0]
 
 	allowed = flt(policy.short_leaves_per_period)
-	used = flt(used)
+	requested = flt(used)
+	auto = auto_consumed(employee, start, end, ignore_attendance)
+	used = requested + auto
 	return frappe._dict(
 		policy=policy.name,
 		period_start=start,
 		period_end=end,
 		hours_per_short_leave=flt(policy.hours_per_short_leave),
+		consumption=policy.consumption,
 		allowed=allowed,
 		used=used,
+		requested=requested,
+		auto_used=auto,
 		remaining=max(allowed - used, 0.0),
 		remaining_hours=max(allowed - used, 0.0) * flt(policy.hours_per_short_leave),
 	)
+
+
+@frappe.whitelist()
+def get_balance(employee, date=None, policy=None, ignore_request=None):
+	"""The quota the session is allowed to look at. See `balance`."""
+	_check_read_permission(employee)
+	return balance(employee, date=date, policy=policy, ignore_request=ignore_request)
 
 
 @frappe.whitelist()

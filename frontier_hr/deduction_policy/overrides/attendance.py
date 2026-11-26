@@ -35,6 +35,9 @@ POLICY_DOCTYPE = "Late Coming and Early Out Deduction Policy"
 # Deduct the minutes actually lost, rather than the Deduction Range figure.
 ACTUAL_MINUTES = "Actual Late Minutes"
 
+# Deduct From option that spends the employee's short leave quota.
+SHORT_LEAVE = "Short Leave"
+
 # Scope filters, most specific first; also the tie-break weight.
 SCOPE_FIELDS = ("employee_grade", "shift_type", "department", "branch")
 
@@ -496,6 +499,10 @@ def _walk_priority(doc, policy, minutes):
 			remaining = _take_from_working_hours(doc, remaining)
 			continue
 
+		if row.source == SHORT_LEAVE:
+			remaining = _take_from_short_leave(doc, remaining)
+			continue
+
 		remaining = _take_from_leave(doc, row, remaining)
 
 	doc.custom_deducted_leave_days = flt(
@@ -531,6 +538,78 @@ def _take_from_leave(doc, row, remaining):
 		},
 	)
 	return remaining - minutes_covered
+
+
+def _take_from_short_leave(doc, remaining):
+	"""Spend one of the employee's short leaves on the lateness.
+
+	The employee never applied -- this is the deduction reaching into the quota
+	on their behalf, so being late costs a short leave rather than leave
+	balance or pay. A short leave they DID apply for has already been taken off
+	the minutes by _less_short_leave, long before this row is reached, so the
+	two can never charge for the same time.
+
+	Nothing is written anywhere else: the breakup row is the record of what was
+	spent, and short_leave.api.auto_consumed counts those rows back into the
+	balance. That is what makes this idempotent -- the breakup is rebuilt from
+	scratch on every save, and the rebuild reads a balance that excludes this
+	row's own consumption.
+	"""
+	api = _short_leave_api()
+	if not api:
+		return remaining
+
+	policy = api.resolve_policy(doc.employee, doc.attendance_date, shift=doc.get("shift"))
+	if not policy:
+		return remaining
+
+	per_unit_minutes = flt(policy.hours_per_short_leave) * 60.0
+	if per_unit_minutes <= 0:
+		return remaining
+
+	# Report Only reads the balance too, so a dry run reports what each day
+	# could take -- it just never counts, because auto_consumed skips Report
+	# Only rows. Same contract as the leave rows beside it.
+	left = api.balance(doc.employee, doc.attendance_date, policy=policy, ignore_attendance=doc.name)
+	if not left or left.remaining <= 0:
+		return remaining
+
+	if policy.consumption == api.WHOLE_UNIT:
+		# One short leave per day, however little of it is needed -- the same
+		# rule a request follows, so applying and being caught cost the same.
+		units = 1.0
+		minutes_covered = min(remaining, per_unit_minutes)
+	else:
+		minutes_covered = min(remaining, flt(left.remaining_hours) * 60.0)
+		units = minutes_covered / per_unit_minutes
+
+	if minutes_covered < 1:
+		return remaining
+
+	doc.append(
+		"custom_deduction_breakup",
+		{
+			"source": SHORT_LEAVE,
+			"minutes": int(round(minutes_covered)),
+			"hours": flt(minutes_covered / 60.0, 3),
+			"units": flt(units, 3),
+		},
+	)
+	return remaining - minutes_covered
+
+
+def _short_leave_api():
+	"""The short leave module, or None where it is not installed.
+
+	A site can carry the deduction policy without short leave, and a policy
+	row naming a module that is not there must take nothing rather than break
+	every Attendance save.
+	"""
+	try:
+		from frontier_hr.short_leave import api
+	except ImportError:
+		return None
+	return api
 
 
 def _take_from_working_hours(doc, remaining):

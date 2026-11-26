@@ -58,6 +58,11 @@ class LateComingandEarlyOutDeductionPolicy(Document):
 					)
 				)
 
+		# Two rows would each read a balance that excludes only the Attendance
+		# row, not the earlier row, so the same short leave would be spent twice.
+		if len([r for r in self.deduction_priority if r.source == "Short Leave"]) > 1:
+			frappe.throw(_("Only one Short Leave row is allowed — it spends a single quota."))
+
 		working_hours_rows = [r for r in self.deduction_priority if r.source == "Working Hours"]
 		if len(working_hours_rows) > 1:
 			frappe.throw(_("Only one Working Hours row is allowed — it always absorbs the remainder."))

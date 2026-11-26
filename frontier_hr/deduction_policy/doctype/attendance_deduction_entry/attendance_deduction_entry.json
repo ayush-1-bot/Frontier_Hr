@@ -10,7 +10,8 @@
   "leave_type",
   "minutes",
   "leave_days",
-  "hours"
+  "hours",
+  "units"
  ],
  "fields": [
   {
@@ -55,12 +56,22 @@
    "label": "Working Hours",
    "precision": "3",
    "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Short leaves the day consumed against the monthly quota.",
+   "fieldname": "units",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Short Leaves Used",
+   "non_negative": 1,
+   "precision": "3"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-24 10:00:00.000000",
+ "modified": "2026-11-26 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Deduction Policy",
  "name": "Attendance Deduction Entry",
