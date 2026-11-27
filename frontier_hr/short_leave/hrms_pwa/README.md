@@ -11,6 +11,22 @@ them**. They are kept here so they can be put back in one step.
 ## Re-applying after an hrms update
 
 ```bash
+bench execute frontier_hr.short_leave.hrms_pwa.apply.main
+cd apps/hrms/frontend && yarn build
+```
+
+`apply.main` copies the three files and applies the patch. It is idempotent:
+run it on a tree that already carries the screens and it says so and stops.
+The rebuild is separate because it needs yarn, which has no business running
+inside a migrate.
+
+Every migrate also calls `apply.warn_if_missing`, so an hrms update that drops
+the screens says so on the next migrate instead of going unnoticed until
+somebody opens the app.
+
+Doing it by hand is the same four steps:
+
+```bash
 cd apps/hrms
 PWA=../frontier_hr/frontier_hr/short_leave/hrms_pwa
 cp $PWA/ShortLeaveRequestForm.vue  frontend/src/views/leave/

@@ -169,6 +169,10 @@ after_migrate = [
 	# A migrate leaves an existing Workspace's is_hidden and roles alone; see
 	# install.py.
 	"frontier_hr.install.sync_app_workspaces",
+	# Says so where an hrms update dropped the short leave screens from the
+	# mobile app. It only warns: putting them back rebuilds a Vue bundle, which
+	# needs yarn and has no business running inside a migrate.
+	"frontier_hr.short_leave.hrms_pwa.apply.warn_if_missing",
 ]
 
 # ---------------------------------------------------------------------------
