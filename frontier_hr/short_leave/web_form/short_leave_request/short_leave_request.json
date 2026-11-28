@@ -1,0 +1,108 @@
+{
+ "allow_comments": 0,
+ "allow_delete": 0,
+ "allow_edit": 1,
+ "allow_incomplete": 0,
+ "allow_multiple": 1,
+ "allow_print": 0,
+ "anonymous": 0,
+ "apply_document_permissions": 1,
+ "condition_json": "[]",
+ "creation": "2026-11-28 10:00:00.000000",
+ "doc_type": "Short Leave Request",
+ "docstatus": 0,
+ "doctype": "Web Form",
+ "hide_footer": 0,
+ "hide_navbar": 0,
+ "idx": 0,
+ "introduction_text": "Ask for a few hours off. Your quota for the period is shown above the form.",
+ "is_standard": 1,
+ "key_required": 0,
+ "list_columns": [
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date"
+  },
+  {
+   "fieldname": "from_time",
+   "fieldtype": "Time",
+   "label": "From"
+  },
+  {
+   "fieldname": "to_time",
+   "fieldtype": "Time",
+   "label": "To"
+  },
+  {
+   "fieldname": "hours",
+   "fieldtype": "Float",
+   "label": "Hours"
+  }
+ ],
+ "login_required": 1,
+ "max_attachment_size": 0,
+ "modified": "2026-11-28 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Short Leave",
+ "name": "short-leave-request",
+ "owner": "Administrator",
+ "published": 1,
+ "route": "short-leave-request",
+ "show_attachments": 0,
+ "show_list": 1,
+ "show_sidebar": 0,
+ "success_message": "Your short leave request has been filed.",
+ "title": "Short Leave Request",
+ "web_form_fields": [
+  {
+   "allow_read_on_all_link_options": 0,
+   "description": "The day you need the hours off.",
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "hidden": 0,
+   "label": "Date",
+   "max_length": 0,
+   "max_value": 0,
+   "read_only": 0,
+   "reqd": 1,
+   "show_in_filter": 1
+  },
+  {
+   "allow_read_on_all_link_options": 0,
+   "fieldname": "from_time",
+   "fieldtype": "Time",
+   "hidden": 0,
+   "label": "From Time",
+   "max_length": 0,
+   "max_value": 0,
+   "read_only": 0,
+   "reqd": 1,
+   "show_in_filter": 0
+  },
+  {
+   "allow_read_on_all_link_options": 0,
+   "fieldname": "to_time",
+   "fieldtype": "Time",
+   "hidden": 0,
+   "label": "To Time",
+   "max_length": 0,
+   "max_value": 0,
+   "read_only": 0,
+   "reqd": 1,
+   "show_in_filter": 0
+  },
+  {
+   "allow_read_on_all_link_options": 0,
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "hidden": 0,
+   "label": "Reason",
+   "max_length": 0,
+   "max_value": 0,
+   "read_only": 0,
+   "reqd": 1,
+   "show_in_filter": 0
+  }
+ ]
+}

@@ -16,6 +16,7 @@ class ShortLeaveRequest(Document):
 	HR_ROLES = {"HR Manager", "HR User", "System Manager"}
 
 	def validate(self):
+		self.set_requester()
 		self.validate_employee()
 		self.validate_own_request()
 		self.set_policy()
@@ -40,6 +41,23 @@ class ShortLeaveRequest(Document):
 			datetime.combine(date, get_time(self.from_time)),
 			datetime.combine(date, get_time(self.to_time)),
 		)
+
+	def set_requester(self):
+		"""Fill in who is asking where the form did not say.
+
+		The web form asks for the day and the hours and nothing else: an
+		employee files for themselves, and a page that could send an Employee
+		could send a colleague's. Company follows from the employee rather
+		than from the page for the same reason.
+		"""
+		if not self.employee:
+			self.employee = frappe.db.get_value(
+				"Employee", {"user_id": frappe.session.user, "status": "Active"}, "name"
+			)
+			if not self.employee:
+				frappe.throw(_("No active Employee record is linked to your user."))
+		if not self.company:
+			self.company = frappe.db.get_value("Employee", self.employee, "company")
 
 	def validate_employee(self):
 		from hrms.hr.utils import validate_active_employee

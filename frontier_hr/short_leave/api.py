@@ -238,6 +238,22 @@ def get_balance(employee, date=None, policy=None, ignore_request=None):
 	return balance(employee, date=date, policy=policy, ignore_request=ignore_request)
 
 
+@frappe.whitelist(methods=["GET"])
+def my_balance(date: str | None = None):
+	"""The caller's own quota, for the web form's banner.
+
+	Separate from `get_balance` because a page that may name an employee may
+	name a colleague. This one reads the session and nothing else, so there is
+	no id to check and nothing to leak.
+	"""
+	employee = frappe.db.get_value(
+		"Employee", {"user_id": frappe.session.user, "status": "Active"}, "name"
+	)
+	if not employee:
+		return None
+	return balance(employee, date=date)
+
+
 @frappe.whitelist()
 def get_requests(employee, limit=10):
 	"""This employee's own short leaves, newest first.

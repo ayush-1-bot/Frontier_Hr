@@ -1,5 +1,14 @@
 # Short Leave in the Frappe HR mobile app
 
+> **Not in use.** Short leave reaches employees through the web form at
+> `frontier_hr/short_leave/web_form/short_leave_request/`, which touches
+> nothing outside this app. These files edit hrms itself, which an hrms
+> update throws away, so they were unhooked on 2026-11-28 and
+> `apply.warn_if_missing` was taken out of `after_migrate`. Nothing here
+> runs unless somebody runs `apply.main` by hand. Kept because the patch
+> still applies and is the only way to put a tile on the Frappe HR app's
+> own Home screen.
+
 The mobile app at `/hrms` is a compiled Vue bundle that ships inside **hrms**,
 not a Frappe page, so a doctype in another app cannot add a tile to it. The
 Quick Links list is a literal array in `hrms/frontend/src/views/Home.vue`.
